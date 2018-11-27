@@ -1,42 +1,42 @@
 from image_data_set import CameraDataSet, imshow
 from torch.utils.data import DataLoader
-from my_net import MyNet
+from patch_net import PatchNet
 import matplotlib.pyplot as plt
 import numpy as np
-from my_loss import MyLoss
 import torch
 import torchvision
 
 
 def main():
-    # Step 1: Set data_loader, create net
-    camera_dataset = CameraDataSet("./SLDataSet/20181112/ImageName.csv", "./SLDataSet/20181112/")
-    # data_loader = DataLoader(camera_dataset, batch_size=4, shuffle=True, num_workers=2)
-    network = MyNet(alpha=1.0, beta=0)
-    print('Step 1: Initialize finished.')
-
-    # Step 2: Load model
+    # Step 1: Set net && Load model
+    network = PatchNet(alpha=1.0, beta=0)
     network.load_state_dict(torch.load('./model.pt'))
     network.eval()
     network.cuda()
+    print('Step 1: Network initialize finished.')
+
+    # Step 2: Load image
+    image_name = './SLDataSet/20181112/DataSet1/cam_img15.png'
+    x_pro_name = './SLDataSet/20181112/DataSet1/x_pro15.txt'
+    test_image = plt.imread(image_name)
+    test_xpro = np.loadtxt(x_pro_name)
+    output_xpro = np.array(test_xpro)
+    print('Data loading finished.')
 
     # Step 3: Evaluate
-    data_loader = DataLoader(camera_dataset, batch_size=1, shuffle=True, num_workers=1)
-    data_iter = iter(data_loader)
-    data = data_iter.next()
-    input_image = data['image']
-    x_pro_mat = data['x_pro']
-    imshow(input_image.squeeze(0) / 2 + 0.5)
+    for h in range(0, 1024):
+        for w in range(0, 1280):
+            if test_xpro[h, w] > 0:
+                part_img = test_image[h - 10:h + 11, w - 10:w + 11, :].copy()
+                norm_part_img = torch.from_numpy((part_img.transpose((2, 0, 1)) - 0.5) * 2)
+                output_label = network(norm_part_img.unsqueeze(0).cuda())
+                output_xpro[h, w] = output_label[0]
 
-    output = network(input_image.cuda()).squeeze(0)
-    print(output.shape)
-    print(output.max(), output.min())
     # imshow(output.detach() / 2 + 0.5)
-    np_image = output.detach().cpu().squeeze(0).numpy()
-    np.savetxt('output_mat.txt', np_image)
+    # np_image = output.detach().cpu().squeeze(0).numpy()
+    np.savetxt('output_mat.txt', output_xpro)
+    print('Step 3: Evaluation finished.')
 
-    plt.imshow(np_image)
-    plt.show()
 
 if __name__ == '__main__':
     main()

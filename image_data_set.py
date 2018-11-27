@@ -34,7 +34,7 @@ class CameraDataSet(Dataset):
         img_idx = int(self.image_frame.iloc[idx][0] / 10)
         h_cen = int(self.image_frame.iloc[idx][1])
         w_cen = int(self.image_frame.iloc[idx][2])
-        part_img = self.image_list[img_idx][h_cen-10:h_cen+11, w_cen-10:w_cen+11, :]
+        part_img = self.image_list[img_idx][h_cen-10:h_cen+11, w_cen-10:w_cen+11, :].copy()
         norm_part_img = torch.from_numpy((part_img.transpose((2, 0, 1)) - 0.5) * 2)
         x_pro = torch.tensor(self.image_frame.iloc[idx][3] / 1024.0).reshape((1, 1, 1))
         norm_x_pro = x_pro.clamp(0, 1)
