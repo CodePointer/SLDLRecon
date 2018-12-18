@@ -5,3 +5,6 @@ venv/*
 __pycache__/*
 *.pt
 *.txt
+*.bin
+test.bin.npy
+test_1pic_1210/*

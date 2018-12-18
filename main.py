@@ -58,7 +58,7 @@ def main():
     else:
         print('Model not found. Train from start.')
 
-    for epoch in range(25, 100):
+    for epoch in range(151, 300):
         running_loss = 0.0
         epoch_loss = 0.0
         loss_times = 0
