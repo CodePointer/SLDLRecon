@@ -59,10 +59,10 @@ class CameraDataSet(Dataset):
         mask = plt.imread(mask_name)
         norm_mask = torch.from_numpy(mask).unsqueeze(0)
 
-        # disp_c_name = self.root_dir + self.image_frame.iloc[idx][0] + self.image_frame.iloc[idx][4]
-        # disp_c_np_mat = np.fromfile(disp_c_name, dtype='<f4').reshape(self.Wc, self.Hc).transpose(1, 0)
-        # disp_c_np_mat = np.nan_to_num(disp_c_np_mat)
-        # disp_c_mat = torch.from_numpy(disp_c_np_mat).unsqueeze(0)
+        disp_c_name = self.root_dir + self.image_frame.iloc[idx][0] + self.image_frame.iloc[idx][4]
+        disp_c_np_mat = np.fromfile(disp_c_name, dtype='<f4').reshape(self.Wc, self.Hc).transpose(1, 0)
+        disp_c_np_mat = np.nan_to_num(disp_c_np_mat)
+        disp_c_mat = torch.from_numpy(disp_c_np_mat).unsqueeze(0)  # [1, Hc, Wc]
 
         disp_v_name = self.root_dir + self.image_frame.iloc[idx][0] + self.image_frame.iloc[idx][5]
         disp_v_np_mat = np.fromfile(disp_v_name, dtype='<u1').reshape(self.D, self.Wc, self.Hc).transpose([0, 2, 1])

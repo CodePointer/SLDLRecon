@@ -17,7 +17,7 @@ def load_pro_mat(root_path, x_file_name, y_file_name, mat_size, width_pro):
     # print(y_pro_mat[15, 18, :])
     # print(idx_mat[15, 18, :])
     idx_pro_vector = idx_mat.reshape(mat_size[0] * mat_size[1] * mat_size[2])  # [H*W*D]
-    assert torch.max(idx_pro_vector).item() <= 127 and torch.min(idx_pro_vector).item() >= 0
+    assert torch.max(idx_pro_vector).item() <= 511 and torch.min(idx_pro_vector).item() >= 0
     return idx_pro_vector.cuda()
 
 
@@ -353,8 +353,8 @@ class MyNet(nn.Module):
         volume_cost = torch.norm(input=cost_volume, p=2, dim=1, keepdim=True)  # [N, 1, H, W, D]
         exp_volume_cost = torch.exp(-volume_cost) + self.epsilon  # [N, 1, H, W, D]
         sum_exp_volume_cost = torch.sum(input=exp_volume_cost, dim=4, keepdim=False)  # [N, 1, H, W]
-        sum_exp_mul = torch.sum(input=exp_volume_cost * self.disp_mat, dim=4, keepdim=False)  # [N, 1, H, W]
-        selected_disp = sum_exp_mul / sum_exp_volume_cost  # [N, 1, H, W]
+        # sum_exp_mul = torch.sum(input=exp_volume_cost * self.disp_mat, dim=4, keepdim=False)  # [N, 1, H, W]
+        # selected_disp = sum_exp_mul / sum_exp_volume_cost  # [N, 1, H, W]
         volume_prob = exp_volume_cost / sum_exp_volume_cost.unsqueeze(4)  # [N, 1, H, W, D]
         volume_prob = volume_prob.permute(0, 4, 2, 3, 1).squeeze(4)  # [N, D, H, W]
 

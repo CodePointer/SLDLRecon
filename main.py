@@ -9,6 +9,7 @@ import math
 import numpy as np
 import os
 import visdom
+import visual_module as vm
 
 
 def main():
@@ -33,11 +34,13 @@ def main():
     # criterion = MyLoss()
     criterion = torch.nn.MSELoss()
     # cos_criterion = torch.nn.CosineEmbeddingLoss()
-    optimizer = torch.optim.SGD(network.parameters(), lr=1e-2, momentum=0.9)
+    optimizer = torch.optim.SGD(network.parameters(), lr=1e-3, momentum=0.9)
     # device = torch.device('cuda:0')
-    vis = visdom.Visdom(env='K5_Network')
+    vis = visdom.Visdom(env='K4_Network_Volume')
     win_epoch = 'epoch_loss'
     win_report = 'report_loss'
+    win_image = 'image_set'
+    win_figure = 'vec_prob'
     print('Step 1: Initialize finished.')
 
     # Step 2: Train and Set Loss for that
@@ -52,13 +55,13 @@ def main():
     network = network.cuda()
     if os.path.exists('./model_volume.pt'):
         print('Model found. Import parameters.')
-        network.load_state_dict(torch.load('./model_volume.pt'))
+        network.load_state_dict(torch.load('./model_volume.pt'), strict=False)
         network.train()  # For BN
         # print(network.state_dict()['dn_convs.0.0.bias'])
     else:
         print('Model not found. Train from start.')
 
-    for epoch in range(151, 300):
+    for epoch in range(0, 300):
         running_loss = 0.0
         epoch_loss = 0.0
         loss_times = 0
@@ -80,7 +83,8 @@ def main():
             coarse_mask = data['mask_c'].cuda()
 
             optimizer.zero_grad()
-            volume_prob = network((image, pattern))
+            # volume_prob = network((image, pattern))
+            sparse_disp = network((image, pattern))
             # print(coarse_disp[0, :, 15, 18])
             # print(volume_prob[0, :, 15, 18])
             # print(volume_prob.shape)
@@ -103,8 +107,8 @@ def main():
             # print(sparse_disp[0, 0, 32, 32])
             # print(feature_mat.requires_grad)
             # print(sparse_disp.requires_grad)
-            loss_coarse = criterion(volume_prob.masked_select(coarse_mask), coarse_disp.masked_select(coarse_mask))
-            # loss_coarse = criterion(sparse_disp.masked_select(coarse_mask), coarse_disp.masked_select(coarse_mask))
+            # loss_coarse = criterion(volume_prob.masked_select(coarse_mask), coarse_disp.masked_select(coarse_mask))
+            loss_coarse = criterion(sparse_disp.masked_select(coarse_mask), coarse_disp.masked_select(coarse_mask))
             loss_coarse.backward()
             # for param_tensor in network.state_dict():
             #     tmp = network.state_dict()[param_tensor]
@@ -147,10 +151,15 @@ def main():
                 # Draw:
                 vis.line(X=torch.FloatTensor([epoch + i / len(data_loader)]), Y=torch.FloatTensor([average]),
                          win=win_report, update='append')
+                # Visualize:
+                vm.volume_visual(gt_v=coarse_disp, res_v=sparse_disp, mask=coarse_mask, vis=vis, win_imgs=win_image,
+                                 win_fig=win_figure)
                 running_loss = 0.0
                 loss_times = 0
+            else:
+                print('[%d, %4d/%d]' % (epoch + 1, i + 1, len(data_loader)))
             if i % save_period == save_period - 1:
-                torch.save(network.state_dict(), './model_volume.pt')
+                torch.save(network.state_dict(), './model/model_volume' + str(epoch) + '.pt')
                 print(network.state_dict()['dn_convs.0.0.bias'])
                 print('Save model at epoch %d after %3d dataset.' % (epoch + 1, i + 1))
         epoch_average = epoch_loss / epoch_hit_times
