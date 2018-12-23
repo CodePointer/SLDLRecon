@@ -22,7 +22,9 @@ def load_pro_mat(root_path, x_file_name, y_file_name, mat_size, width_pro):
 
 
 def load_disp_volume(root_path, file_name, volume_size, batch_size):
-    raw_input = torch.from_numpy(np.fromfile(root_path + file_name, dtype='<f4'))
+    # raw_input = torch.from_numpy(np.fromfile(root_path + file_name, dtype='<f4'))
+    raw_input = torch.Tensor(list(range(64, 0, -1)))
+    raw_input = raw_input.float() / 64.0
     assert(raw_input.shape[0] == volume_size[2])
     disp_volume = torch.stack([raw_input] * volume_size[0], 0)
     disp_volume = torch.stack([disp_volume] * volume_size[1], 1)
@@ -38,15 +40,15 @@ class SparseNet(nn.Module):
         RGB Image: [N, C=3, H=1024, W=1280], range: [-1, 1]
         Pattern:   [N, C=3, H=128, W=1024], range: [-1, 1]
     Output: sparse or volume (depending on opts)
-        sparse_disp: [N, C=1, H_c=1024/2^K, W_c=1280/2^K], range: [716, 1724]
+        sparse_disp: [N, C=1 or C=64, H_c=1024/2^K, W_c=1280/2^K], range: [0, 1]
     """
 
-    def __init__(self, root_path, batch_size, down_K=4, opts=None):
+    def __init__(self, root_path, batch_size, down_k=4, opts=None):
         super(SparseNet, self).__init__()
 
         if opts is None:
             opts = {'vol': False}
-        self.K = down_K
+        self.K = down_k
         self.N = batch_size
         self.H = int(1024 / pow(2, self.K))
         self.W = int(1280 / pow(2, self.K))

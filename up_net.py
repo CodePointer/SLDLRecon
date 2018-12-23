@@ -1,8 +1,6 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as Func
-import numpy as np
-from torch.nn import Sequential
+import math
 
 
 class UpNet(nn.Module):
@@ -22,7 +20,7 @@ class UpNet(nn.Module):
         self.sep_layer = 3
 
         # Upsample layer
-        self.up_sample = nn.Upsample(scale_factor=self.K, mode='bilinear')
+        self.up_sample = nn.Upsample(scale_factor=math.pow(2, self.K), mode='bilinear')
 
         # Residual estimation
         res_conv_dilation = [1, 2, 4, 8, 1, 1]
@@ -82,7 +80,7 @@ class UpNet(nn.Module):
         """
         # Upsample disp_c:
         sparse_disp = self.up_sample(x[1])
-        print('sparse_disp: ', sparse_disp.shape)
+        # print('sparse_disp: ', sparse_disp.shape)
 
         # Image conv:  [N, 16, 1024, 1280]
         image_self_conv_in = x[0]
@@ -107,4 +105,4 @@ class UpNet(nn.Module):
         dense_disp = sparse_disp + res_disp
         dense_disp = self.last_relu(dense_disp)
 
-        return dense_disp
+        return dense_disp, sparse_disp

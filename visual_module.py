@@ -4,9 +4,9 @@ import visdom
 
 def volume_visual(gt_v, res_v, mask, vis, win_imgs, win_fig, nrow=4):
     # Detach & cpu
-    gt_v = gt_v.detach().cpu()
-    res_v = res_v.detach().cpu()
-    mask = mask.detach().cpu()
+    # gt_v = gt_v.detach().cpu()
+    # res_v = res_v.detach().cpu()
+    # mask = mask.detach().cpu()
 
     # Input size
     vol_shape = gt_v.shape  # [N, D, H, W]
@@ -17,17 +17,17 @@ def volume_visual(gt_v, res_v, mask, vis, win_imgs, win_fig, nrow=4):
 
     # Make disp for 64
     disp_range = (torch.Tensor(range(D, 0, -1)) - 1) / D  # [D]
-    disp_vol = torch.stack([disp_range] * N, 0)  # [N, D]
-    disp_vol = torch.stack([disp_vol] * H, 2)
-    disp_vol = torch.stack([disp_vol] * W, 3)  # [N, D, H, W]
+    # disp_vol = torch.stack([disp_range] * N, 0)  # [N, D]
+    # disp_vol = torch.stack([disp_vol] * H, 2)
+    # disp_vol = torch.stack([disp_vol] * W, 3)  # [N, D, H, W]
 
     # Calculate disp for N set
-    gt_disp_set = torch.sum(input=gt_v * disp_vol, dim=1, keepdim=True)  # [N, 1, H, W]
-    res_disp_set = torch.sum(input=res_v * disp_vol, dim=1, keepdim=True)  # [N, 1, H, W]
-    res_disp_set = res_disp_set * mask.float()
-    show_disp_set = torch.cat((gt_disp_set, res_disp_set), dim=3)
-    show_disp_set = torch.nn.functional.interpolate(input=show_disp_set, scale_factor=4.0, mode='nearest')
-    vis.images(show_disp_set, nrow=nrow, padding=2, win=win_imgs)
+    # gt_disp_set = torch.sum(input=gt_v * disp_vol, dim=1, keepdim=True)  # [N, 1, H, W]
+    # res_disp_set = torch.sum(input=res_v * disp_vol, dim=1, keepdim=True)  # [N, 1, H, W]
+    # res_disp_set = res_disp_set * mask.float()
+    # show_disp_set = torch.cat((gt_disp_set, res_disp_set), dim=3)
+    # show_disp_set = torch.nn.functional.interpolate(input=show_disp_set, scale_factor=4.0, mode='nearest')
+    # vis.images(show_disp_set, nrow=nrow, padding=2, win=win_imgs)
 
     # Choose one part as plot show
     opt = {'width': 512, 'height': 256}
@@ -56,3 +56,16 @@ def disp_visual(gt_c, res_c, mask_c, vis, win_imgs, nrow=4):
     show_disp_set = torch.cat((gt_disp_set, res_disp_set), dim=3)
     show_disp_set = torch.nn.functional.interpolate(input=show_disp_set, scale_factor=4.0, mode='nearest')
     vis.images(show_disp_set, nrow=nrow, padding=2, win=win_imgs)
+
+
+def dense_visual(gt_d, res_d, inter_d, mask_d, vis, win_imgs):
+    mask_disp = mask_d[0, :, :, :]
+    inter_disp = inter_d[0, :, :, :]
+    inter_disp[mask_disp == 0] = 0
+    gt_disp = gt_d[0, :, :, :]
+    gt_disp[mask_disp == 0] = 0
+    res_disp = res_d[0, :, :, :]
+    res_disp[mask_disp == 0] = 0
+    show_disp = torch.stack((inter_disp, res_disp, gt_disp), dim=0)
+    show_disp = torch.nn.functional.interpolate(input=show_disp, scale_factor=0.5, mode='nearest')
+    vis.images(show_disp * 255.0, nrow=3, padding=4, win=win_imgs)
