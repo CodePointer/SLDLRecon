@@ -11,8 +11,12 @@ import visdom
 import visual_module as vm
 
 
-def train_dense_net(root_path, lr_n, start_epoch=0):
+def lr_change(epoch):
+    epoch = epoch // 6
+    return (2 ** epoch)
 
+
+def train_dense_net(root_path, lr_n, start_epoch=0):
     # Step 1: Set data_loader, create net, visual
     batch_size = 4
     down_k = 5
@@ -23,8 +27,8 @@ def train_dense_net(root_path, lr_n, start_epoch=0):
     print('Step 0: DataLoader size: %d.' % len(data_loader))
     vis_env = 'K' + str(down_k) + '_Network_Dense2'
     vis = visdom.Visdom(env=vis_env)
-    win_epoch = 'epoch_loss'
-    win_report = 'report_loss'
+    win_loss = 'training_loss'
+    win_lr = 'lr_change'
     win_image = 'image_set'
     win_disp = 'disp_set'
 
@@ -36,13 +40,18 @@ def train_dense_net(root_path, lr_n, start_epoch=0):
     print('Step 1: Initialize finished.')
 
     # Step 2: Model loading
-    report_period = 50
+    report_period = 10
+    schedular = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_change)
     print('Step 2: Model loading finished.')
 
     # Step 3: Training
     criterion = criterion.cuda()
     dense_network = dense_network.cuda()
-    for epoch in range(start_epoch - 1, 50):
+    for epoch in range(start_epoch - 1, 600):
+        schedular.step()
+        param_group = optimizer.param_groups[0]
+        now_lr = param_group['lr']
+        vis.line(X=torch.FloatTensor([epoch + 0.5]), Y=torch.FloatTensor([now_lr]), win=win_lr, update='append')
         running_loss = 0.0
         epoch_loss = 0.0
         for i, data in enumerate(data_loader, 0):
@@ -81,7 +90,7 @@ def train_dense_net(root_path, lr_n, start_epoch=0):
                 print(train_num, report_info)
                 # Draw:
                 vis.line(X=torch.FloatTensor([epoch + i / len(data_loader)]), Y=torch.FloatTensor([average]),
-                         win=win_report, update='append')
+                         win=win_loss, update='append', name='report')
                 # Visualize
                 vm.dense_visual(input_set=(image_obs, image_est, disp_input, dense_mask),
                                 output_set=(dense_disp_gt, dense_disp_res),
@@ -91,7 +100,9 @@ def train_dense_net(root_path, lr_n, start_epoch=0):
 
         # Draw:
         epoch_average = epoch_loss / len(data_loader)
-        vis.line(X=torch.FloatTensor([epoch]), Y=torch.FloatTensor([epoch_average]), win=win_epoch, update='append')
+        vis.line(X=torch.FloatTensor([epoch + 0.5]), Y=torch.FloatTensor([epoch_average]), win=win_loss,
+                 update='append',
+                 name='epoch', opts={'markers': True})
         print('Average loss for epoch %d: %.2e' % (epoch + 1, epoch_average))
         vis.text('Average loss for epoch %d: %f<br>' % (epoch + 1, epoch_average), win='log', append=True)
         # Save Model

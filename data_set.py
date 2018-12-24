@@ -16,10 +16,13 @@ class CameraDataSet(Dataset):
         self.root_dir = root_dir
 
         self.image_frame = []
+        count = 0
         with open(root_dir + csv_name) as f:
             f_csv = csv.reader(f)
             for row in f_csv:
-                self.image_frame.append(row)
+                count += 1
+                if count % 20 == 0:
+                    self.image_frame.append(row)
         self.pattern = plt.imread(root_dir + 'pattern_part0.png')
         self.H = 1024
         self.W = 1280
