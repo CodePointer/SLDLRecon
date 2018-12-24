@@ -58,14 +58,29 @@ def disp_visual(gt_c, res_c, mask_c, vis, win_imgs, nrow=4):
     vis.images(show_disp_set, nrow=nrow, padding=2, win=win_imgs)
 
 
-def dense_visual(gt_d, res_d, inter_d, mask_d, vis, win_imgs):
-    mask_disp = mask_d[0, :, :, :]
-    inter_disp = inter_d[0, :, :, :]
-    inter_disp[mask_disp == 0] = 0
-    gt_disp = gt_d[0, :, :, :]
-    gt_disp[mask_disp == 0] = 0
-    res_disp = res_d[0, :, :, :]
-    res_disp[mask_disp == 0] = 0
-    show_disp = torch.stack((inter_disp, res_disp, gt_disp), dim=0)
+def dense_visual(input_set, output_set, vis, win_img, win_disp):
+    """
+    :param input_set: (image_obs, image_est, disp_in, mask). [N, 3, H, W] for image. [N, 1, H, W] for disp.
+    :param output_set: (disp_gt, disp_res). [N, 1, H, W] for them.
+    :param vis: visdom handle
+    :param win_img: window for image
+    :param win_disp: window for disp
+    :return: None
+    """
+    img_obs = input_set[0][0, :, :, :]
+    img_est = input_set[1][0, :, :, :]
+    show_img = torch.stack((img_obs, img_est), dim=0)
+    show_img = (show_img + 1) / 2
+    show_img = torch.nn.functional.interpolate(input=show_img, scale_factor=0.5, mode='nearest')
+    vis.images(show_img * 255.0, nrow=2, padding=2, win=win_img)
+
+    mask = input_set[3][0, :, :, :]
+    disp_in = input_set[2][0, :, :, :]
+    disp_in[mask == 0] = 0
+    disp_gt = output_set[0][0, :, :, :]
+    disp_gt[mask == 0] = 0
+    disp_res = output_set[1][0, :, :, :]
+    disp_res[mask == 0] = 0
+    show_disp = torch.stack((disp_in, disp_res, disp_gt), dim=0)
     show_disp = torch.nn.functional.interpolate(input=show_disp, scale_factor=0.5, mode='nearest')
-    vis.images(show_disp * 255.0, nrow=3, padding=4, win=win_imgs)
+    vis.images(show_disp * 255.0, nrow=3, padding=4, win=win_disp)
