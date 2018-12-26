@@ -44,18 +44,18 @@ def volume_visual(gt_v, res_v, mask, vis, win_imgs, win_fig, nrow=4):
 
 def disp_visual(gt_c, res_c, mask_c, vis, win_imgs, nrow=4):
     # Detach & cpu
-    gt_v = gt_c.detach().cpu()  # [N, 1, H, W]
-    res_v = res_c.detach().cpu()
+    gt_c = gt_c.detach().cpu()  # [N, 1, H, W]
+    res_c = res_c.detach().cpu()
     mask = mask_c.detach().cpu()
-    beta = 716
-    alpha = 16.0 * 63
+    # beta = 716
+    # alpha = 16.0 * 63
 
     # Calculate disp for N set
-    gt_disp_set = (gt_v - beta) / alpha * mask.float()
-    res_disp_set = (res_v - beta) / alpha * mask.float()
+    gt_disp_set = gt_c * mask.float()
+    res_disp_set = res_c * mask.float()
     show_disp_set = torch.cat((gt_disp_set, res_disp_set), dim=3)
     show_disp_set = torch.nn.functional.interpolate(input=show_disp_set, scale_factor=4.0, mode='nearest')
-    vis.images(show_disp_set, nrow=nrow, padding=2, win=win_imgs)
+    vis.images(show_disp_set * 255.0, nrow=nrow, padding=2, win=win_imgs)
 
 
 def dense_visual(input_set, output_set, vis, win_img, win_disp):

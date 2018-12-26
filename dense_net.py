@@ -20,7 +20,7 @@ class DenseNet(nn.Module):
         # Residual estimation
         res_conv_dilation = [1, 2, 4, 8, 1, 1]
         self.res_conv = []
-        res_conv_plane = [7, 32, 32, 32, 32, 32, 32]
+        res_conv_plane = [1, 32, 32, 32, 32, 32, 32]
         for i in range(0, 6):
             tmp_conv = nn.Sequential(
                 nn.Conv2d(res_conv_plane[i], res_conv_plane[i + 1], kernel_size=3,
@@ -48,14 +48,15 @@ class DenseNet(nn.Module):
         """
 
         # Image conv:  [N, 16, 1024, 1280]
-        concat_conv_in = torch.cat(x, 1)
+        # concat_conv_in = torch.cat(x, 1)
+        concat_conv_in = x
         for i in range(0, 6):
             concat_conv_out = self.res_conv[i](concat_conv_in)
             concat_conv_in = concat_conv_out
         res_disp = self.res_out(concat_conv_in)
 
         # Final output
-        dense_disp = x[2] + res_disp
+        dense_disp = res_disp + x
         dense_disp = self.last_relu(dense_disp)
 
         return dense_disp

@@ -11,13 +11,19 @@ import visdom
 import visual_module as vm
 
 
-def train_sparse_net(opts, root_path, start_epoch=0):
+def lr_change(epoch):
+    epoch = epoch // 10
+    return 0.1 ** epoch
+
+
+def train_sparse_net(opts, root_path, start_epoch=1):
 
     # Step 1: Set data_loader, create net, visual
-    batch_size = 16
-    down_k = 5
-    camera_dataset = CameraDataSet(root_path, 'DataNameList' + str(down_k) + 'v.csv', down_k=down_k, opts=opts)
-    data_loader = DataLoader(camera_dataset, batch_size=batch_size, shuffle=True, num_workers=0)
+    batch_size = 8
+    down_k = 4
+
+    camera_dataset = CameraDataSet(root_path, 'DataNameList' + str(down_k) + '.csv', down_k=down_k, opts=opts)
+    data_loader = DataLoader(camera_dataset, batch_size=batch_size, shuffle=True, num_workers=2)
     print('Step 0: DataLoader size: %d.' % len(data_loader))
     network = SparseNet(root_path=root_path, batch_size=batch_size, down_k=down_k, opts=opts)
     if opts['vol']:
@@ -25,21 +31,21 @@ def train_sparse_net(opts, root_path, start_epoch=0):
     else:
         vis_env = 'K' + str(down_k) + '_Network_Disp'
     vis = visdom.Visdom(env=vis_env)
-    win_epoch = 'epoch_loss'
-    win_report = 'report_loss'
+    win_loss = 'training_loss'
     win_image = 'image_set'
     win_figure = 'vec_prob'
-    learning_rate = 1e-7
+    win_lr = 'lr_change'
+    learning_rate = 1e-1
     if opts['vol']:
-        learning_rate = 1e-2
+        learning_rate = 1e-1
     criterion = torch.nn.MSELoss()
-    print('learning_rate:', learning_rate)
+    print('learning_rate: %.1e' % learning_rate)
     optimizer = torch.optim.SGD(network.parameters(), lr=learning_rate, momentum=0.9)
     print('Step 1: Initialize finished.')
 
     # Step 2: Model loading
-    report_period = 10
-    save_period = 125
+    report_period = 25
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_change)
     pattern = camera_dataset.get_pattern()
     pattern = torch.stack([pattern] * batch_size, 0)  # BatchSize
     if os.path.exists('./model_volume.pt'):
@@ -52,7 +58,13 @@ def train_sparse_net(opts, root_path, start_epoch=0):
     criterion = criterion.cuda()
     pattern = pattern.cuda()
     network = network.cuda()
-    for epoch in range(start_epoch, 300):
+    for epoch in range(start_epoch - 1, 100):
+        scheduler.step()
+        param_group = optimizer.param_groups[0]
+        now_lr = param_group['lr']
+        print('learning_rate: %.1e' % now_lr)
+        # vis.line(X=torch.FloatTensor([epoch + 0.5]), Y=torch.FloatTensor([now_lr]), win=win_lr, update='append')
+
         running_loss = 0.0
         epoch_loss = 0.0
         for i, data in enumerate(data_loader, 0):
@@ -77,20 +89,11 @@ def train_sparse_net(opts, root_path, start_epoch=0):
             optimizer.zero_grad()
             sparse_disp = network((image, pattern))
             loss_coarse = criterion(sparse_disp.masked_select(coarse_mask), coarse_disp.masked_select(coarse_mask))
+            # para_list = list(network.dn_convs[0].parameters())
+            # print(para_list[1])
             loss_coarse.backward()
-
-            # Check parameters validation
-            param_list = list(network.parameters())
-            for idx in range(0, len(param_list)):
-                param = param_list[idx]
-                if torch.isnan(param).any().item():
-                    print('Found nan parameter.', i, '->', idx)
-                    print(param.shape)
-                    return
-                if param.grad is not None and torch.isnan(param.grad).any().item():
-                    print('Found nan grad.', i, '->', idx)
-                    print(param.grad)
-                    return
+            optimizer.step()
+            # print(para_list[1])
 
             # Optimize
             loss_add = loss_coarse.item()
@@ -109,7 +112,7 @@ def train_sparse_net(opts, root_path, start_epoch=0):
                 print(train_num, report_info)
                 # Draw:
                 vis.line(X=torch.FloatTensor([epoch + i / len(data_loader)]), Y=torch.FloatTensor([average]),
-                         win=win_report, update='append')
+                         win=win_loss, update='append', name='report')
                 # Visualize:
                 if opts['vol']:
                     vm.volume_visual(gt_v=coarse_disp, res_v=sparse_disp, mask=coarse_mask, vis=vis, win_imgs=win_image,
@@ -120,16 +123,26 @@ def train_sparse_net(opts, root_path, start_epoch=0):
             else:
                 print(train_num, end='', flush=True)
 
-            # Save model
-            if i % save_period == save_period - 1:
-                torch.save(network.state_dict(), './model/model_volume' + str(epoch) + '.pt')
-                print('Save model at epoch %d after %3d dataset.' % (epoch + 1, i + 1))
-
-        epoch_average = epoch_loss / len(data_loader)
         # Draw:
-        vis.line(X=torch.FloatTensor([epoch]), Y=torch.FloatTensor([epoch_average]), win=win_epoch, update='append')
+        epoch_average = epoch_loss / len(data_loader)
+        vis.line(X=torch.FloatTensor([epoch + 0.5]), Y=torch.FloatTensor([epoch_average]), win=win_loss,
+                 update='append', name='epoch')
         print('Average loss for epoch %d: %.2e' % (epoch + 1, epoch_average))
-        # vis.text('Average loss for epoch %d: %f<br>' % (epoch + 1, epoch_average), win='log', append=True)
+
+        # Check Parameter nan number
+        param_list = list(network.parameters())
+        for idx in range(0, len(param_list)):
+            param = param_list[idx]
+            if torch.isnan(param).any().item():
+                print('Found NaN number. Epoch %d, on param[%d].' % (epoch + 1, idx))
+                return
+            if param.grad is not None and torch.isnan(param.grad).any().item():
+                print('Found NaN grad. Epoch %d, on param[%d].' % (epoch + 1, idx))
+                return
+
+        # Save
+        torch.save(network.state_dict(), './model/model_volume' + str(epoch) + '.pt')
+        print('Save model at epoch %d.' % (epoch + 1))
     print('Step 3: Finish training.')
 
     # Step 3: Save the model
@@ -150,7 +163,7 @@ def main(argv):
         return
 
     # Get start epoch num
-    start_epoch = 0
+    start_epoch = 1
     if len(argv) >= 3:
         start_epoch = int(argv[2])
 

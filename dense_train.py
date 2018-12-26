@@ -12,7 +12,7 @@ import visual_module as vm
 
 
 def lr_change(epoch):
-    epoch = epoch // 6
+    epoch = epoch // 5
     return (2 ** epoch)
 
 
@@ -47,10 +47,12 @@ def train_dense_net(root_path, lr_n, start_epoch=0):
     # Step 3: Training
     criterion = criterion.cuda()
     dense_network = dense_network.cuda()
-    for epoch in range(start_epoch - 1, 600):
+    for epoch in range(start_epoch - 1, 500):
         schedular.step()
         param_group = optimizer.param_groups[0]
+        print(param_group)
         now_lr = param_group['lr']
+        print('learning_rate: %.1e' % now_lr)
         vis.line(X=torch.FloatTensor([epoch + 0.5]), Y=torch.FloatTensor([now_lr]), win=win_lr, update='append')
         running_loss = 0.0
         epoch_loss = 0.0
@@ -69,7 +71,7 @@ def train_dense_net(root_path, lr_n, start_epoch=0):
 
             # Train
             optimizer.zero_grad()
-            dense_disp_res = dense_network((image_obs, image_est, disp_input))
+            dense_disp_res = dense_network(disp_input)
             loss_dense = criterion(dense_disp_res.masked_select(dense_mask), dense_disp_gt.masked_select(dense_mask))
             loss_dense.backward()
 

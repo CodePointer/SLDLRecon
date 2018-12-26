@@ -21,7 +21,7 @@ class CameraDataSet(Dataset):
             f_csv = csv.reader(f)
             for row in f_csv:
                 count += 1
-                if count % 20 == 0:
+                if count % 5 == 0:
                     self.image_frame.append(row)
         self.pattern = plt.imread(root_dir + 'pattern_part0.png')
         self.H = 1024
