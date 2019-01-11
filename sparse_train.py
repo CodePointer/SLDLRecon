@@ -12,18 +12,19 @@ import visual_module as vm
 
 
 def lr_change(epoch):
-    epoch = epoch // 10
-    return 0.1 ** epoch
+    epoch = epoch // 1
+    return 0.96 ** epoch
 
 
-def train_sparse_net(opts, root_path, start_epoch=1):
+def train_sparse_net(root_path, lr_n, start_epoch=1):
 
     # Step 1: Set data_loader, create net, visual
-    batch_size = 8
-    down_k = 4
+    batch_size = 4
+    down_k = 3
+    opts = {'vol': False, 'disp_c': True, 'stride': 5}
 
     camera_dataset = CameraDataSet(root_path, 'DataNameList' + str(down_k) + '.csv', down_k=down_k, opts=opts)
-    data_loader = DataLoader(camera_dataset, batch_size=batch_size, shuffle=True, num_workers=2)
+    data_loader = DataLoader(camera_dataset, batch_size=batch_size, shuffle=True, num_workers=1)
     print('Step 0: DataLoader size: %d.' % len(data_loader))
     network = SparseNet(root_path=root_path, batch_size=batch_size, down_k=down_k, opts=opts)
     if opts['vol']:
@@ -35,16 +36,15 @@ def train_sparse_net(opts, root_path, start_epoch=1):
     win_image = 'image_set'
     win_figure = 'vec_prob'
     win_lr = 'lr_change'
-    learning_rate = 1e-1
-    if opts['vol']:
-        learning_rate = 1e-1
+    learning_rate = math.pow(0.1, lr_n)
+    print('learning_rate: %.1e' % learning_rate)
     criterion = torch.nn.MSELoss()
     print('learning_rate: %.1e' % learning_rate)
     optimizer = torch.optim.SGD(network.parameters(), lr=learning_rate, momentum=0.9)
     print('Step 1: Initialize finished.')
 
     # Step 2: Model loading
-    report_period = 25
+    report_period = 50
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_change)
     pattern = camera_dataset.get_pattern()
     pattern = torch.stack([pattern] * batch_size, 0)  # BatchSize
@@ -63,8 +63,7 @@ def train_sparse_net(opts, root_path, start_epoch=1):
         param_group = optimizer.param_groups[0]
         now_lr = param_group['lr']
         print('learning_rate: %.1e' % now_lr)
-        # vis.line(X=torch.FloatTensor([epoch + 0.5]), Y=torch.FloatTensor([now_lr]), win=win_lr, update='append')
-
+        vis.line(X=torch.FloatTensor([epoch + 0.5]), Y=torch.FloatTensor([now_lr]), win=win_lr, update='append')
         running_loss = 0.0
         epoch_loss = 0.0
         for i, data in enumerate(data_loader, 0):
@@ -88,6 +87,9 @@ def train_sparse_net(opts, root_path, start_epoch=1):
             # Train
             optimizer.zero_grad()
             sparse_disp = network((image, pattern))
+            # print('sparse_disp: ', sparse_disp.shape)
+            # print('coarse_mask: ', coarse_mask.shape)
+            # print('coarse_disp: ', coarse_disp.shape)
             loss_coarse = criterion(sparse_disp.masked_select(coarse_mask), coarse_disp.masked_select(coarse_mask))
             # para_list = list(network.dn_convs[0].parameters())
             # print(para_list[1])
@@ -119,7 +121,7 @@ def train_sparse_net(opts, root_path, start_epoch=1):
                                      win_fig=win_figure)
                 else:
                     vm.disp_visual(gt_c=coarse_disp, res_c=sparse_disp, mask_c=coarse_mask, vis=vis,
-                                   win_imgs=win_image, nrow=4)
+                                   win_imgs=win_image, nrow=2)
             else:
                 print(train_num, end='', flush=True)
 
@@ -152,23 +154,16 @@ def train_sparse_net(opts, root_path, start_epoch=1):
 
 def main(argv):
     # Input parameters
-    assert len(argv) >= 2
-
-    opts = {}
-    if argv[1] == 'Vol':
-        opts['vol'] = True
-    elif argv[1] == 'Disp':
-        opts['vol'] = False
-    else:
-        return
+    lr_n = int(argv[1])
 
     # Get start epoch num
     start_epoch = 1
     if len(argv) >= 3:
         start_epoch = int(argv[2])
 
-    train_sparse_net(opts=opts, root_path='./SLDataSet/20181204/', start_epoch=start_epoch)
+    train_sparse_net(root_path='./SLDataSet/20181204/', start_epoch=start_epoch, lr_n=lr_n)
 
 
 if __name__ == '__main__':
+    assert len(sys.argv) >= 2
     main(sys.argv)

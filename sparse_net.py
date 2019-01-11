@@ -17,7 +17,7 @@ def load_pro_mat(root_path, x_file_name, y_file_name, mat_size, width_pro):
     # print(y_pro_mat[15, 18, :])
     # print(idx_mat[15, 18, :])
     idx_pro_vector = idx_mat.reshape(mat_size[0] * mat_size[1] * mat_size[2])  # [H*W*D]
-    assert torch.max(idx_pro_vector).item() <= 511 and torch.min(idx_pro_vector).item() >= 0
+    assert torch.max(idx_pro_vector).item() <= 2047 and torch.min(idx_pro_vector).item() >= 0
     return idx_pro_vector.cuda()
 
 

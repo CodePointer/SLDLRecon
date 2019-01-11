@@ -8,7 +8,7 @@ def main(out_file, k):
     data_types = [('cam_img', 'cam_img', '.png'),
                   ('disp_mat', 'disp_mat', '.bin'),
                   ('mask_mat', 'mask_mat', '.png'),
-                  ('disp_c' + str(k), 'disp_c', '.bin'),
+                  ('disp_c' + str(k), 'disp_c', '.npy'),
                   ('disp_v' + str(k), 'disp_v', '.bin'),
                   ('mask_c' + str(k), 'mask_c', '.png'),
                   ('disp_out' + str(k), 'disp_out', '.npy'),

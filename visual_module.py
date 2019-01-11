@@ -68,7 +68,7 @@ def dense_visual(input_set, output_set, vis, win_img, win_disp):
     :return: None
     """
     img_obs = input_set[0][0, :, :, :]
-    img_est = input_set[1][0, :, :, :]
+    img_est = input_set[1][0, :, :, :].cpu()
     show_img = torch.stack((img_obs, img_est), dim=0)
     show_img = (show_img + 1) / 2
     show_img = torch.nn.functional.interpolate(input=show_img, scale_factor=0.5, mode='nearest')

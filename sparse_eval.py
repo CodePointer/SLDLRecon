@@ -14,7 +14,7 @@ def eval_sparse_net(root_path):
 
     # Step 1: Set data_loader, create net, visual
     batch_size = 1
-    down_k = 5
+    down_k = 4
     opts = {'vol': False}
     camera_dataset = CameraDataSet(root_path, 'DataNameList' + str(down_k) + '.csv', down_k=down_k, opts=opts)
     data_loader = DataLoader(camera_dataset, batch_size=batch_size, shuffle=False, num_workers=8)
@@ -87,7 +87,7 @@ def eval_sparse_net(root_path):
         disp_out_mat = torch.nn.functional.interpolate(input=sparse_disp, scale_factor=math.pow(2, down_k),
                                                        mode='bilinear', align_corners=False)
         np_disp_out = disp_out_mat.cpu().squeeze().numpy()
-        # np.save(disp_out_name, np_disp_out)  # disp_out: [H, W]
+        np.save(disp_out_name, np_disp_out)  # disp_out: [H, W]
 
         # Get est_img_name and save
         est_img_name = camera_dataset.get_img_est_path(data_idx)

@@ -12,16 +12,26 @@ class CameraDataSet(Dataset):
         if disp_range is None:
             disp_range = [716, 1724]
         if opts is None:
-            opts = {'vol': False, 'dense': False}
+            opts = {'vol': False, 'disp_c': False, 'dense': False, 'stride': 1}
         self.root_dir = root_dir
+        self.opt = opts
+        if 'dense' not in self.opt.keys():
+            self.opt['dense'] = False
+        if 'vol' not in self.opt.keys():
+            self.opt['vol'] = False
+        if 'disp_c' not in self.opt.keys():
+            self.opt['disp_c'] = False
+        if 'stride' not in self.opt.keys():
+            self.opt['stride'] = 1
 
         self.image_frame = []
         count = 0
+
         with open(root_dir + csv_name) as f:
             f_csv = csv.reader(f)
             for row in f_csv:
                 count += 1
-                if count % 5 == 0:
+                if count % opts['stride'] == 0:
                     self.image_frame.append(row)
         self.pattern = plt.imread(root_dir + 'pattern_part0.png')
         self.H = 1024
@@ -31,11 +41,6 @@ class CameraDataSet(Dataset):
         self.D = 64
         self.Hc = int(self.H / pow(2, self.K))
         self.Wc = int(self.W / pow(2, self.K))
-        self.opt = opts
-        if 'dense' not in self.opt.keys():
-            self.opt['dense'] = False
-        if 'vol' not in self.opt.keys():
-            self.opt['vol'] = False
 
     def __len__(self):
         return len(self.image_frame)
@@ -45,6 +50,12 @@ class CameraDataSet(Dataset):
 
     def get_opt(self):
         return self.opt
+
+    def get_mask_c_path(self, idx):
+        return ''.join((self.root_dir, self.image_frame[idx][0], self.image_frame[idx][6]))
+
+    def get_disp_c_path(self, idx):
+        return ''.join((self.root_dir, self.image_frame[idx][0], self.image_frame[idx][4]))
 
     def get_disp_out_path(self, idx):
         return ''.join((self.root_dir, self.image_frame[idx][0], self.image_frame[idx][7]))
@@ -80,7 +91,7 @@ class CameraDataSet(Dataset):
             disp_out_np_mat = np.load(disp_out_name)  # In (0, 1], .npy
             disp_out_np_mat = np.nan_to_num(disp_out_np_mat)
             norm_disp_out_mat = torch.from_numpy(disp_out_np_mat).unsqueeze(0)  # [1, H, W]
-            norm_disp_out_mat[norm_mask == 0] = 0
+            # norm_disp_out_mat[norm_mask == 0] = 0
             sample['disp_out'] = norm_disp_out_mat
 
         # Load img_est
@@ -93,24 +104,26 @@ class CameraDataSet(Dataset):
             sample['img_est'] = norm_est_img
 
         # Load mask_c
-        if not self.opt['dense']:
-            mask_c_name = self.root_dir + self.image_frame[idx][0] + self.image_frame[idx][6]
+        if self.opt['disp_c'] or self.opt['vol']:
+            mask_c_name = self.get_mask_c_path(idx)
             mask_c = plt.imread(mask_c_name)
+            mask_c = mask_c[:, :, 1]
             norm_mask_c = torch.from_numpy(mask_c).byte().unsqueeze(0)  # [1, Hc, Wc]
             sample['mask_c'] = norm_mask_c
 
         # Load disp_c
-        if not self.opt['dense'] and not self.opt['vol']:
-            disp_c_name = self.root_dir + self.image_frame[idx][0] + self.image_frame[idx][4]
-            disp_c_np_mat = np.fromfile(disp_c_name, dtype='<f4').reshape(self.Wc, self.Hc).transpose(1, 0)
-            disp_c_np_mat = (disp_c_np_mat - self.disp_range[0]) / (self.disp_range[1] - self.disp_range[0])
+        if self.opt['disp_c']:
+            disp_c_name = self.get_disp_c_path(idx)
+            disp_c_np_mat = np.load(disp_c_name)  # In (0, 1], .npy
+            # disp_c_np_mat = np.fromfile(disp_c_name, dtype='<f4').reshape(self.Wc, self.Hc).transpose(1, 0)
+            # disp_c_np_mat = (disp_c_np_mat - self.disp_range[0]) / (self.disp_range[1] - self.disp_range[0])
             disp_c_np_mat = np.nan_to_num(disp_c_np_mat)
             disp_c_mat = torch.from_numpy(disp_c_np_mat).unsqueeze(0)  # [1, Hc, Wc]
-            disp_c_mat[sample['mask_c'] == 0] = 0
+            # disp_c_mat[sample['mask_c'] == 0] = 0
             sample['disp_c'] = disp_c_mat
 
         # Load disp_v
-        if not self.opt['dense'] and self.opt['vol']:
+        if self.opt['vol']:
             disp_v_name = self.root_dir + self.image_frame[idx][0] + self.image_frame[idx][5]
             disp_v_np_mat = np.fromfile(disp_v_name, dtype='<u1').reshape(self.D, self.Wc, self.Hc).transpose([0, 2, 1])
             disp_v_np_mat = np.nan_to_num(disp_v_np_mat)

@@ -12,14 +12,14 @@ import visual_module as vm
 
 
 def lr_change(epoch):
-    epoch = epoch // 5
-    return (2 ** epoch)
+    epoch = epoch // 1
+    return 0.8 ** epoch
 
 
 def train_dense_net(root_path, lr_n, start_epoch=0):
     # Step 1: Set data_loader, create net, visual
     batch_size = 4
-    down_k = 5
+    down_k = 4
     opts = {'dense': True}
 
     camera_dataset = CameraDataSet(root_path, 'DataNameList' + str(down_k) + '.csv', down_k=down_k, opts=opts)
@@ -47,10 +47,10 @@ def train_dense_net(root_path, lr_n, start_epoch=0):
     # Step 3: Training
     criterion = criterion.cuda()
     dense_network = dense_network.cuda()
-    for epoch in range(start_epoch - 1, 500):
+    for epoch in range(start_epoch - 1, 100):
         schedular.step()
         param_group = optimizer.param_groups[0]
-        print(param_group)
+        # print(param_group)
         now_lr = param_group['lr']
         print('learning_rate: %.1e' % now_lr)
         vis.line(X=torch.FloatTensor([epoch + 0.5]), Y=torch.FloatTensor([now_lr]), win=win_lr, update='append')
@@ -63,17 +63,20 @@ def train_dense_net(root_path, lr_n, start_epoch=0):
             dense_disp_gt = data['disp']
             disp_input = data['disp_out']
             image_est = data['img_est']
-            image_obs = image_obs.cuda()
+            image_minus = (image_obs - image_est) / 2
+            # image_obs = image_obs.cuda()
             dense_mask = dense_mask.cuda()
             dense_disp_gt = dense_disp_gt.cuda()
             disp_input = disp_input.cuda()
-            image_est = image_est.cuda()
+            # image_est = image_est.cuda()
+            image_minus = image_minus.cuda()
 
             # Train
             optimizer.zero_grad()
-            dense_disp_res = dense_network(disp_input)
+            dense_disp_res = dense_network((image_minus, disp_input))
             loss_dense = criterion(dense_disp_res.masked_select(dense_mask), dense_disp_gt.masked_select(dense_mask))
             loss_dense.backward()
+            optimizer.step()
 
             # Optimize
             loss_add = loss_dense.item()
@@ -94,7 +97,7 @@ def train_dense_net(root_path, lr_n, start_epoch=0):
                 vis.line(X=torch.FloatTensor([epoch + i / len(data_loader)]), Y=torch.FloatTensor([average]),
                          win=win_loss, update='append', name='report')
                 # Visualize
-                vm.dense_visual(input_set=(image_obs, image_est, disp_input, dense_mask),
+                vm.dense_visual(input_set=(image_obs, image_minus, disp_input, dense_mask),
                                 output_set=(dense_disp_gt, dense_disp_res),
                                 vis=vis, win_img=win_image, win_disp=win_disp)
             else:
@@ -103,8 +106,7 @@ def train_dense_net(root_path, lr_n, start_epoch=0):
         # Draw:
         epoch_average = epoch_loss / len(data_loader)
         vis.line(X=torch.FloatTensor([epoch + 0.5]), Y=torch.FloatTensor([epoch_average]), win=win_loss,
-                 update='append',
-                 name='epoch', opts={'markers': True})
+                 update='append', name='epoch')
         print('Average loss for epoch %d: %.2e' % (epoch + 1, epoch_average))
         vis.text('Average loss for epoch %d: %f<br>' % (epoch + 1, epoch_average), win='log', append=True)
         # Save Model
