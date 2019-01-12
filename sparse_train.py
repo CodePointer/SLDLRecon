@@ -13,7 +13,7 @@ import visual_module as vm
 
 def lr_change(epoch):
     epoch = epoch // 1
-    return 0.96 ** epoch
+    return 1.00 ** epoch
 
 
 def train_sparse_net(root_path, lr_n, start_epoch=1):
@@ -24,7 +24,7 @@ def train_sparse_net(root_path, lr_n, start_epoch=1):
     opts = {'vol': False, 'disp_c': True, 'stride': 5}
 
     camera_dataset = CameraDataSet(root_path, 'DataNameList' + str(down_k) + '.csv', down_k=down_k, opts=opts)
-    data_loader = DataLoader(camera_dataset, batch_size=batch_size, shuffle=True, num_workers=1)
+    data_loader = DataLoader(camera_dataset, batch_size=batch_size, shuffle=True, num_workers=0)
     print('Step 0: DataLoader size: %d.' % len(data_loader))
     network = SparseNet(root_path=root_path, batch_size=batch_size, down_k=down_k, opts=opts)
     if opts['vol']:
@@ -58,7 +58,7 @@ def train_sparse_net(root_path, lr_n, start_epoch=1):
     criterion = criterion.cuda()
     pattern = pattern.cuda()
     network = network.cuda()
-    for epoch in range(start_epoch - 1, 100):
+    for epoch in range(start_epoch - 1, 500):
         scheduler.step()
         param_group = optimizer.param_groups[0]
         now_lr = param_group['lr']
