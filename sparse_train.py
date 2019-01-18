@@ -36,7 +36,7 @@ def train_sparse_net(root_path, lr_n, start_epoch=1):
     win_image = 'image_set'
     win_figure = 'vec_prob'
     win_lr = 'lr_change'
-    learning_rate = math.pow(0.1, lr_n)
+    learning_rate = math.pow(0.1, lr_n) * 0.5
     print('learning_rate: %.1e' % learning_rate)
     criterion = torch.nn.MSELoss()
     print('learning_rate: %.1e' % learning_rate)

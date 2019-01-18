@@ -58,6 +58,29 @@ def disp_visual(gt_c, res_c, mask_c, vis, win_imgs, nrow=4):
     vis.images(show_disp_set * 255.0, nrow=nrow, padding=2, win=win_imgs)
 
 
+def pattern_visual(input_set, vis, win_imgs, win_cam, win_pattern):
+    disp_c = input_set[0]
+    sparse_disp = input_set[1]
+    mask_c = input_set[2]
+    pattern = input_set[3][0, :, :, :]
+    image = input_set[4]
+
+    # Calculate disp for N set
+    sparse_disp[mask_c == 0] = 0
+    show_disp_set = torch.cat((disp_c, sparse_disp), dim=3)
+    show_disp_set = torch.nn.functional.interpolate(input=show_disp_set, scale_factor=2.0, mode='nearest')
+    vis.images(show_disp_set * 255.0, nrow=1, padding=2, win=win_imgs)
+
+    # Show pattern & image
+    vis.image((pattern / 2 + 0.5), win=win_pattern)
+    vis.text(str(torch.max(pattern)) + '<br>' + str(torch.min(pattern)), win="Info")
+    max_val = torch.max(pattern).item()
+    min_val = torch.min(pattern).item()
+    vis.image((pattern - min_val) / (max_val - min_val), win='Normed_Pattern')
+    show_img_set = torch.nn.functional.interpolate(input=image, scale_factor=0.25, mode='nearest')
+    vis.images(show_img_set / 2 + 0.5, nrow=1, padding=2, win=win_cam)
+
+
 def dense_visual(input_set, output_set, vis, win_img, win_disp):
     """
     :param input_set: (image_obs, image_est, disp_in, mask). [N, 3, H, W] for image. [N, 1, H, W] for disp.

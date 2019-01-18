@@ -1,5 +1,6 @@
 import csv
 import sys
+import numpy as np
 
 
 def main(out_file, k):
@@ -8,6 +9,7 @@ def main(out_file, k):
     data_types = [('cam_img', 'cam_img', '.png'),
                   ('disp_mat', 'disp_mat', '.bin'),
                   ('mask_mat', 'mask_mat', '.png'),
+                  ('shade_mat', 'shade_mat', '.png'),
                   ('disp_c' + str(k), 'disp_c', '.npy'),
                   ('disp_v' + str(k), 'disp_v', '.bin'),
                   ('mask_c' + str(k), 'mask_c', '.png'),
@@ -24,9 +26,14 @@ def main(out_file, k):
                 tmp_list.append(file_name)
             total_list.append(tmp_list)
 
-    with open(out_file, 'w', newline='') as csv_file:
+    with open(out_file + '.csv', 'w', newline='') as csv_file:
         writer = csv.writer(csv_file)
         writer.writerows(total_list)
+
+    header_dict = {}
+    for i in range(0, len(data_types)):
+        header_dict[data_types[i][1]] = i + 1
+    np.save(out_file + '.npy', header_dict)
 
     return
 
@@ -39,6 +46,6 @@ if __name__ == '__main__':
     csv_name = 'DataNameList'
     if len(sys.argv) >= 3:
         csv_name = sys.argv[2]
-    csv_name += str(down_k) + '.csv'
+    csv_name += str(down_k)
 
     main(out_file=csv_name, k=down_k)
