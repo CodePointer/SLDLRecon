@@ -3,8 +3,10 @@ data/*
 venv/*
 .idea/*
 __pycache__/*
+Module/__pycache__/*
 *.pt
 *.txt
 *.bin
 test.bin.npy
+res_pattern.npy
 test_1pic_1210/*

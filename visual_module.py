@@ -64,6 +64,7 @@ def pattern_visual(input_set, vis, win_imgs, win_cam, win_pattern):
     mask_c = input_set[2]
     pattern = input_set[3][0, :, :, :]
     image = input_set[4]
+    sparse_pattern = input_set[5][0, :, :, :]
 
     # Calculate disp for N set
     sparse_disp[mask_c == 0] = 0
@@ -73,12 +74,21 @@ def pattern_visual(input_set, vis, win_imgs, win_cam, win_pattern):
 
     # Show pattern & image
     vis.image((pattern / 2 + 0.5), win=win_pattern)
-    vis.text(str(torch.max(pattern)) + '<br>' + str(torch.min(pattern)), win="Info")
-    max_val = torch.max(pattern).item()
-    min_val = torch.min(pattern).item()
-    vis.image((pattern - min_val) / (max_val - min_val), win='Normed_Pattern')
+    # vis.text(str(torch.max(pattern)) + '<br>' + str(torch.min(pattern)), win="Info")
+    # max_val = torch.max(pattern).item()
+    # min_val = torch.min(pattern).item()
+    # vis.image((pattern - min_val) / (max_val - min_val), win='Normed_Pattern')
+    # vis.line(X=torch.FloatTensor([x_pos]), Y=torch.FloatTensor([max_val]), win=win_pat_val,
+    #          update='append', name='max', opts=dict(showlegend=True))
+    # vis.line(X=torch.FloatTensor([x_pos]), Y=torch.FloatTensor([min_val]), win=win_pat_val,
+    #          update='append', name='min', opts=dict(showlegend=True))
     show_img_set = torch.nn.functional.interpolate(input=image, scale_factor=0.25, mode='nearest')
     vis.images(show_img_set / 2 + 0.5, nrow=1, padding=2, win=win_cam)
+
+    # Show pattern boxinfo
+    pattern_c_base = sparse_pattern.reshape(sparse_pattern.shape[0],
+                                            sparse_pattern.shape[1] * sparse_pattern.shape[2]).transpose(1, 0)
+    vis.boxplot(X=pattern_c_base, opts=dict(legend=['R', 'G', 'B']), win='Pattern_box')
 
 
 def dense_visual(input_set, output_set, vis, win_img, win_disp):

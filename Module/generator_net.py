@@ -8,7 +8,7 @@ class GeneratorNet(nn.Module):
     Input: (Random Tensor) 64
         latent tensor: [N, C=1, 64]
     Output: Pattern, [16, 128]
-        pattern: [N, C=3, H_sp=16, W_sp=128] range: [0, 1]
+        pattern: [N, C=1, H_sp=16, W_sp=128] range: [0, 1]
         will be interpolated 8 times
     """
 
@@ -52,7 +52,7 @@ class GeneratorNet(nn.Module):
         # Output layers
         self.out_layer = nn.Sequential(
             nn.Conv2d(up_conv_planes[-1], 3, kernel_size=3, padding=1),
-            nn.Sigmoid()
+            nn.Tanh()
         )
 
     def init_weights(self):
@@ -78,10 +78,11 @@ class GeneratorNet(nn.Module):
 
         # Output layers
         sparse_pattern = self.out_layer(pat_feature_mat)
+        return sparse_pattern
 
         # print('sparse_pattern:', sparse_pattern.shape)
-        dense_pattern = nn.functional.interpolate(input=sparse_pattern, scale_factor=8, mode='bilinear',
-                                                  align_corners=False)
+        # dense_pattern = nn.functional.interpolate(input=sparse_pattern, scale_factor=8, mode='bilinear',
+        #                                           align_corners=False)
 
         # print('dense_pattern:', dense_pattern.shape)
-        return (dense_pattern - 0.5) * 2
+        # return dense_pattern

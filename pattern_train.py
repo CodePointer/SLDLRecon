@@ -13,8 +13,8 @@ import visual_module as vm
 
 
 def lr_change(epoch):
-    epoch = epoch // 1
-    return 1.00 ** epoch
+    epoch = epoch // 150
+    return 0.5 ** epoch
 
 
 def train_together(root_path, lr_n, start_epoch=1):
@@ -33,6 +33,8 @@ def train_together(root_path, lr_n, start_epoch=1):
     vis_env = 'K' + str(down_k) + '_Network_Gene'
     vis = visdom.Visdom(env=vis_env)
     win_loss = 'training_loss'
+    # vis.line(X=None, Y=None, update='remove', name='report', win=win_loss)
+    # vis.line(X=None, Y=None, update='remove', name='epoch', win=win_loss)
     win_images = 'image_set'
     win_pattern = 'pattern'
 
@@ -41,12 +43,12 @@ def train_together(root_path, lr_n, start_epoch=1):
 
     criterion = torch.nn.MSELoss()
     pattern_opt = torch.optim.SGD(pattern_network.parameters(), lr=learning_rate, momentum=0.9)
-    sparse_opt = torch.optim.SGD(sparse_network.parameters(), lr=learning_rate, momentum=0.9)
+    # sparse_opt = torch.optim.SGD(sparse_network.parameters(), lr=learning_rate, momentum=0.9)
     print('Step 1: Initialize finished.')
 
     # Step 2: Model loading
     pattern_schedular = torch.optim.lr_scheduler.LambdaLR(pattern_opt, lr_lambda=lr_change)
-    sparse_scheduler = torch.optim.lr_scheduler.LambdaLR(sparse_opt, lr_lambda=lr_change)
+    # sparse_scheduler = torch.optim.lr_scheduler.LambdaLR(sparse_opt, lr_lambda=lr_change)
     if os.path.exists('./model_sparse.pt'):
         print('Sparse Model found. Import parameters.')
         sparse_network.load_state_dict(torch.load('./model_sparse.pt'), strict=False)
@@ -58,7 +60,9 @@ def train_together(root_path, lr_n, start_epoch=1):
     print('Step 2: Model loading finished.')
 
     # Step 3: Training
-    report_period = 20
+    p_noise_rad = 0.1
+    i_noise_rad = 0.1
+    report_period = 5
     save_period = 10
     criterion = criterion.cuda()
     sparse_network = sparse_network.cuda()
@@ -73,6 +77,11 @@ def train_together(root_path, lr_n, start_epoch=1):
     for epoch in range(start_epoch - 1, 5000):
         running_loss = 0.0
         epoch_loss = 0.0
+        pattern_schedular.step()
+        param_group = pattern_opt.param_groups[0]
+        # print(param_group)
+        now_lr = param_group['lr']
+        print('learning_rate: %.1e' % now_lr)
         for i, data in enumerate(data_loader, 0):
             # Get data
             disp_mat = data['disp_mat'].cuda()
@@ -82,26 +91,31 @@ def train_together(root_path, lr_n, start_epoch=1):
             shade_mat = data['shade_mat'].cuda()
             idx_vec = data['idx_vec'].cuda()
             pattern_opt.zero_grad()
-            sparse_opt.zero_grad()
+            # sparse_opt.zero_grad()
 
             # Generate pattern
-            pattern_mat = pattern_network(pattern_seed)  # [N, C=3, Hp, Wp]
+            # pattern_mat = pattern_network(pattern_seed)  # [N, C=3, Hp, Wp]
+            sparse_pattern = pattern_network(pattern_seed)
+            dense_pattern = torch.nn.functional.interpolate(input=sparse_pattern, scale_factor=8, mode='bilinear',
+                                                            align_corners=False)
+            pattern_mat = dense_pattern
             # print(torch.max(pattern_mat), torch.min(pattern_mat))
             # vis.image(pattern_mat[0, :, :, :] / 2 + 0.5, win=win_pattern)
 
-            # Get Image
-            # print('pattern_mat: ', pattern_mat.shape)
-            # print('idx_vec: ', idx_vec.shape)
+            # Image Rendering Part
+            pattern_noise = torch.randn(pattern_mat.shape).cuda() / 3 * p_noise_rad
             pattern_rearrange = pattern_mat.transpose(1, 0)
+            # pattern_rearrange = (pattern_mat + pattern_noise).transpose(1, 0)
             pattern_search = pattern_rearrange.reshape(3, batch_size * pro_height * pro_width)
+
             idx_vec_plain = idx_vec.reshape(batch_size * cam_height * cam_width)
             est_img_vec = torch.index_select(input=pattern_search, dim=1, index=idx_vec_plain)
             # print('est_img_vec:', est_img_vec.shape)
             image_mat = est_img_vec.reshape(3, batch_size, disp_mat.shape[2], disp_mat.shape[3]).transpose(1, 0)
-            # print('image_mat:', image_mat.shape)
+            # image_mat = ((image_mat / 2 + 0.5) * shade_mat - 0.5) * 2
+            image_noise = torch.randn(image_mat.shape).cuda() / 3 * i_noise_rad
+            # image_mat = image_mat + image_noise
             image_mat.masked_fill_(mask_mat == 0, -1)
-            # print('shade_mat:', shade_mat.shape)
-            image_mat = ((image_mat / 2 + 0.5) * shade_mat - 0.5) * 2
             # vis.image(shade_mat[0, :, :, :], win="shade")
             # vis.image(image_mat[0, :, :, :] / 2 + 0.5, win="Est_Image")
 
@@ -111,7 +125,7 @@ def train_together(root_path, lr_n, start_epoch=1):
             # Train
             loss_coarse = criterion(sparse_disp.masked_select(mask_c), disp_c.masked_select(mask_c))
             loss_coarse.backward()
-            sparse_opt.step()
+            # sparse_opt.step()
             pattern_opt.step()
 
             # Optimize
@@ -131,9 +145,9 @@ def train_together(root_path, lr_n, start_epoch=1):
                 print(train_num, report_info)
                 # Draw:
                 vis.line(X=torch.FloatTensor([epoch + i / len(data_loader)]), Y=torch.FloatTensor([average]),
-                         win=win_loss, update='append', name='report')
+                         win=win_loss, update='append', name='report', opts=dict(showlegend=True))
                 # Visualize:
-                vm.pattern_visual((disp_c, sparse_disp, mask_c, pattern_mat, image_mat),
+                vm.pattern_visual((disp_c, sparse_disp, mask_c, pattern_mat, image_mat, sparse_pattern),
                                   vis=vis, win_imgs=win_images, win_cam="Est_Image", win_pattern=win_pattern)
             else:
                 print(train_num, end='', flush=True)
@@ -141,7 +155,7 @@ def train_together(root_path, lr_n, start_epoch=1):
         # Draw:
         epoch_average = epoch_loss / len(data_loader)
         vis.line(X=torch.FloatTensor([epoch + 0.5]), Y=torch.FloatTensor([epoch_average]), win=win_loss,
-                 update='append', name='epoch')
+                 update='append', name='epoch', opts=dict(showlegend=True))
         print('Average loss for epoch %d: %.2e' % (epoch + 1, epoch_average))
 
         # Check Parameter nan number
@@ -156,12 +170,15 @@ def train_together(root_path, lr_n, start_epoch=1):
                 return
 
         # Save
+        pattern = pattern_mat[0, :, :, :].detach().cpu().numpy()
         if epoch % save_period == save_period - 1:
             torch.save(pattern_network.state_dict(), './model_pair/model_pattern' + str(epoch) + '.pt')
             torch.save(sparse_network.state_dict(), './model_pair/model_sparse' + str(epoch) + '.pt')
+            np.save('./model_pair/res_pattern' + str(epoch) + '.npy', pattern)
             print('Save model at epoch %d.' % (epoch + 1))
         torch.save(pattern_network.state_dict(), './model_pattern.pt')
         torch.save(sparse_network.state_dict(), './model_sparse.pt')
+        np.save('./res_pattern.npy', pattern)
     print('Step 3: Finish training.')
 
     # Step 3: Save the model
