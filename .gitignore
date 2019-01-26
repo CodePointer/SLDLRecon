@@ -5,6 +5,7 @@ venv/*
 __pycache__/*
 Module/__pycache__/*
 *.pt
+*.pyc
 *.txt
 *.bin
 test.bin.npy

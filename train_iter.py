@@ -1,9 +1,10 @@
 import sys
 from data_set import CameraDataSet
 from torch.utils.data import DataLoader
-from Module.generator_net import GeneratorNet
-# from Module.generator_net_1d import GeneratorNet
-from sparse_net import SparseNet
+# from Module.generator_net import GeneratorNet
+from Module.generator_net_grey import GeneratorNet
+# from Module.sparse_net import SparseNet
+from Module.sparse_net_grey import SparseNet
 import torch
 import torchvision
 import math
@@ -45,7 +46,7 @@ def render_image(pattern, idx_vec, mask_mat):
     pattern_search = torch.clamp(pattern_search, min=-1, max=1)
     idx_vec_plain = idx_vec.reshape(batch_size * cam_height * cam_width)
     est_img_vec = torch.index_select(input=pattern_search, dim=1, index=idx_vec_plain)
-    image_mat = est_img_vec.reshape(3, batch_size, cam_height, cam_width).transpose(1, 0)
+    image_mat = est_img_vec.reshape(pattern_channel, batch_size, cam_height, cam_width).transpose(1, 0)
     image_noise = torch.randn(image_mat.shape).cuda() / 3 * i_noise_rad
     image_mat = image_mat + image_noise
     image_mat = torch.clamp(image_mat, min=-1, max=1)
@@ -251,6 +252,7 @@ def train_iteration(root_path, lr_n, start_epoch=1):
                 # Visualization and report
                 print('.', end='', flush=True)
 
+            print('Test finished.')
             report_info = vm.iter_visual_test(vis=vis, win_set=win_set, input_set=(
                 (epoch, len(test_loader)),
                 (g_loss_test, d_loss_test)))
@@ -265,10 +267,10 @@ def train_iteration(root_path, lr_n, start_epoch=1):
         if epoch % save_period == save_period - 1:
             torch.save(pattern_network.state_dict(), './model_pair/model_pattern' + str(epoch) + '.pt')
             torch.save(sparse_network.state_dict(), './model_pair/model_sparse' + str(epoch) + '.pt')
-            np.save('./model_pair/res_pattern' + str(epoch) + '.npy', pattern)
             print('Save model at epoch %d.' % (epoch + 1))
         torch.save(pattern_network.state_dict(), './model_pattern.pt')
         torch.save(sparse_network.state_dict(), './model_sparse.pt')
+        np.save('./model_pair/res_pattern' + str(epoch) + '.npy', pattern)
         np.save('./res_pattern.npy', pattern)
 
     print('Step 3: Finish training.')

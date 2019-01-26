@@ -137,7 +137,8 @@ def iter_visual_report(vis, win_set, input_set):
     vis.image((pattern / 2 + 0.5), win=win_set['pattern'])
     pattern_c_base = sparse_pattern.reshape((sparse_pattern.shape[0],
                                              sparse_pattern.shape[1] * sparse_pattern.shape[2])).transpose(1, 0)
-    box_opts = dict(showlegend=True, title='Pattern Boxplot', width=480, height=360, legend=['R', 'G', 'B'])
+    # box_opts = dict(showlegend=True, title='Pattern Boxplot', width=480, height=360, legend=['R', 'G', 'B'])
+    box_opts = dict(showlegend=True, title='Pattern Boxplot', width=480, height=360, legend=['Pixel'])
     vis.boxplot(X=pattern_c_base, opts=box_opts, win=win_set['pattern_box'])
     # Show rendered image, disparity, prob
     mask_c, image, disp_mat, volume_prob, disp_gt = input_set[3]
