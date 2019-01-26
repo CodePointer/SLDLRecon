@@ -79,7 +79,7 @@ def check_nan_param(network):
     return True
 
 
-def train_together(root_path, lr_n, start_epoch=1):
+def train_iteration(root_path, lr_n, start_epoch=1):
     # Step 1: Set data_loader, create net, visual
     batch_size = 4
     down_k = 3
@@ -94,15 +94,20 @@ def train_together(root_path, lr_n, start_epoch=1):
 
     vis_env = 'K' + str(down_k) + '_Network_Gene'
     vis = visdom.Visdom(env=vis_env)
-    win_loss = 'training_loss'
-    win_images = 'image_set'
-    win_pattern = 'pattern'
+    win_set = {'g_loss': 'Generator Loss',
+               'd_loss': 'Discriminator Loss',
+               'image': 'Rendered Image',
+               'match': 'Match Result',
+               'disp': 'Disparity Result',
+               'pattern': 'Generated Pattern',
+               'pattern_box': 'Pattern Boxplot'}
+
     learning_rate = math.pow(0.1, lr_n)
     print('learning_rate: %.1e' % learning_rate)
 
     pattern_network = GeneratorNet(root_path=root_path, batch_size=batch_size)
     sparse_network = SparseNet(root_path=root_path, batch_size=batch_size, down_k=down_k)
-    # criterion = torch.nn.SmoothL1Loss()
+    criterion = torch.nn.SmoothL1Loss()
     pattern_opt = torch.optim.Adam(pattern_network.parameters(), lr=learning_rate, betas=(0.9, 0.999))
     sparse_opt = torch.optim.Adam(sparse_network.parameters(), lr=learning_rate, betas=(0.9, 0.999))
     print('Step 1: Initialize finished.')
@@ -133,9 +138,12 @@ def train_together(root_path, lr_n, start_epoch=1):
         ##############
         # Train part #
         ##############
-        running_loss = 0.0
+        g_loss_running = 0.0
+        d_loss_running = 0.0
+        g_loss_epoch = 0.0
+        d_loss_epoch = 0.0
         epoch_loss = 0.0
-        pattern_schedular.step()
+        # pattern_schedular.step()
         param_group = pattern_opt.param_groups[0]
         # print(param_group)
         now_lr = param_group['lr']
@@ -147,68 +155,66 @@ def train_together(root_path, lr_n, start_epoch=1):
             mask_c = data['mask_c'].cuda()
             # shade_mat = data['shade_mat'].cuda()
             idx_vec = data['idx_vec'].cuda()
-            pattern_opt.zero_grad()
-            sparse_opt.zero_grad()
 
-            # Generate pattern
-            # pattern_mat = pattern_network(pattern_seed)  # [N, C=3, Hp, Wp]
+            ###################
+            # Generator Train #
+            ###################
+            pattern_opt.zero_grad()
             sparse_pattern = pattern_network(pattern_seed)
-            # sparse_pattern_1d = pattern_network(pattern_seed)
-            # sparse_pattern = torch.stack([sparse_pattern_1d] * 16, dim=2)
             dense_pattern = torch.nn.functional.interpolate(input=sparse_pattern, scale_factor=8, mode='bilinear',
                                                             align_corners=False)
             pattern_mat = dense_pattern
-
-            # Image Rendering Part
             image_mat = render_image(pattern=pattern_mat, idx_vec=idx_vec, mask_mat=mask_mat)
-
-            # Get Disp
-            # sparse_disp = sparse_network((image_mat, pattern_mat))
             sparse_prob = sparse_network((image_mat, pattern_mat))
             selected_prob = select_prob(sparse_prob, disp_c, mask_c)
-
             # Calculate loss
             cross_entropy = - torch.log(selected_prob.masked_select(mask_c))
             loss_entropy = cross_entropy.mean()
             loss_entropy.backward()
-
-            # Train
-            sparse_opt.step()
+            g_loss_add = loss_entropy.item()
+            g_loss_running += g_loss_add
             pattern_opt.step()
+            assert not np.isnan(g_loss_add)
 
-            # Optimize
-            loss_add = loss_entropy.item()
-            running_loss += loss_add
-            epoch_loss += loss_add
-            if np.isnan(loss_add):
-                print('Error: Nan detected at set [%d].' % i)
-                return
+            #######################
+            # Discriminator Train #
+            #######################
+            sparse_opt.zero_grad()
+            sparse_prob = sparse_network((image_mat.detach(), pattern_mat.detach()))
+            sparse_disp = sparse_network.softmax_disp(sparse_prob)
+            loss_coarse = criterion(sparse_disp.masked_select(mask_c), disp_c.masked_select(mask_c))
+            loss_coarse.backward()
+            d_loss_add = loss_coarse.item()
+            d_loss_running += d_loss_add
+            sparse_opt.step()
+            assert not np.isnan(d_loss_add)
 
             # Visualization and report
-            train_num = '.'
+            print('.', end='', flush=True)
+            g_loss_epoch += g_loss_add
+            d_loss_epoch += d_loss_add
             if i % report_period == report_period - 1:
-                average = running_loss / report_period
-                running_loss = 0.0
-                report_info = '[%d, %4d/%d]: %.2e' % (epoch + 1, i + 1, len(train_loader), average)
-                print(train_num, report_info)
-                # Draw:
-                vis.line(X=torch.FloatTensor([epoch + i / len(train_loader)]), Y=torch.FloatTensor([average]),
-                         win=win_loss, update='append', name='train_report', opts=dict(showlegend=True))
-                # Visualize:
-                vm.pattern_visual((selected_prob, mask_c, pattern_mat, image_mat, sparse_pattern),
-                                  vis=vis, win_imgs=win_images, win_cam="Est_Image", win_pattern=win_pattern)
-            else:
-                print(train_num, end='', flush=True)
-        # Draw:
-        epoch_average = epoch_loss / len(train_loader)
-        vis.line(X=torch.FloatTensor([epoch + 0.5]), Y=torch.FloatTensor([epoch_average]), win=win_loss,
-                 update='append', name='train_epoch', opts=dict(showlegend=True))
+                report_info = vm.iter_visual_report(vis=vis, win_set=win_set, input_set=(
+                    (i, epoch, len(train_loader), report_period),
+                    (g_loss_running, d_loss_running),
+                    (pattern_mat[0, :, :, :], sparse_pattern[0, :, :, :]),
+                    (mask_c, image_mat, sparse_disp, selected_prob, disp_c)))
+                g_loss_running = 0
+                d_loss_running = 0
+                print(report_info)
+
+        # Epoch visualization:
+        report_info = vm.iter_visual_epoch(vis=vis, win_set=win_set, input_set=(
+            (epoch, len(train_loader)),
+            (g_loss_epoch, d_loss_epoch)))
+        print(report_info)
 
         ##############
         # Test part: #
         ##############
         with torch.no_grad():
-            test_loss = 0
+            g_loss_test = 0
+            d_loss_test = 0
             for i, data in enumerate(test_loader, 0):
                 # Get data
                 mask_mat = data['mask_mat'].cuda()
@@ -217,41 +223,38 @@ def train_together(root_path, lr_n, start_epoch=1):
                 # shade_mat = data['shade_mat'].cuda()
                 idx_vec = data['idx_vec'].cuda()
 
-                # Generate pattern
-                # pattern_mat = pattern_network(pattern_seed)  # [N, C=3, Hp, Wp]
+                ###################
+                # Generator Test  #
+                ###################
                 sparse_pattern = pattern_network(pattern_seed)
-                # sparse_pattern_1d = pattern_network(pattern_seed)
-                # sparse_pattern = torch.stack([sparse_pattern_1d] * 16, dim=2)
                 dense_pattern = torch.nn.functional.interpolate(input=sparse_pattern, scale_factor=8, mode='bilinear',
                                                                 align_corners=False)
                 pattern_mat = dense_pattern
-
-                # Image Rendering Part
                 image_mat = render_image(pattern=pattern_mat, idx_vec=idx_vec, mask_mat=mask_mat)
-
-                # Get Disp
-                # sparse_disp = sparse_network((image_mat, pattern_mat))
                 sparse_prob = sparse_network((image_mat, pattern_mat))
                 selected_prob = select_prob(sparse_prob, disp_c, mask_c)
-
                 # Calculate loss
                 cross_entropy = - torch.log(selected_prob.masked_select(mask_c))
                 loss_entropy = cross_entropy.mean()
+                g_loss_add = loss_entropy.item()
+                g_loss_test += g_loss_add
+                assert not np.isnan(g_loss_add)
 
-                # Optimize
-                loss_add = loss_entropy.item()
-                test_loss += loss_add
-                if np.isnan(loss_add):
-                    print('Error: Nan detected at set [%d].' % i)
-                    return
-
+                #######################
+                # Discriminator Test  #
+                #######################
+                sparse_disp = sparse_network.softmax_disp(sparse_prob)
+                loss_coarse = criterion(sparse_disp.masked_select(mask_c), disp_c.masked_select(mask_c))
+                d_loss_add = loss_coarse.item()
+                d_loss_test += d_loss_add
+                assert not np.isnan(d_loss_add)
                 # Visualization and report
                 print('.', end='', flush=True)
-            test_average = test_loss / len(test_loader)
-            vis.line(X=torch.FloatTensor([epoch + 0.5]), Y=torch.FloatTensor([test_average]), win=win_loss,
-                     update='append', name='test_epoch', opts=dict(showlegend=True))
 
-        print('Average loss for epoch[%d]: %.2e, %.2e' % (epoch + 1, epoch_average, test_average))
+            report_info = vm.iter_visual_test(vis=vis, win_set=win_set, input_set=(
+                (epoch, len(test_loader)),
+                (g_loss_test, d_loss_test)))
+            print(report_info)
 
         # Check Parameter nan number
         assert check_nan_param(sparse_network)
@@ -280,7 +283,7 @@ def main(argv):
     if len(argv) >= 3:
         start_epoch = int(argv[2])
 
-    train_together(root_path='./SLDataSet/20181204/', start_epoch=start_epoch, lr_n=lr_n)
+    train_iteration(root_path='./SLDataSet/20181204/', start_epoch=start_epoch, lr_n=lr_n)
 
 
 if __name__ == '__main__':

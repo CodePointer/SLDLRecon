@@ -25,11 +25,11 @@ def load_disp_volume(root_path, file_name, volume_size, batch_size):
     # raw_input = torch.from_numpy(np.fromfile(root_path + file_name, dtype='<f4'))
     raw_input = torch.Tensor(list(range(64, 0, -1)))
     raw_input = raw_input.float() / 64.0
-    assert(raw_input.shape[0] == volume_size[2])
-    disp_volume = torch.stack([raw_input] * volume_size[0], 0)
-    disp_volume = torch.stack([disp_volume] * volume_size[1], 1)
-    disp_volume = torch.stack([disp_volume] * batch_size, 0)
-    disp_volume = disp_volume.unsqueeze(1)
+    assert(raw_input.shape[0] == volume_size[2])  # [D]
+    disp_volume = torch.stack([raw_input] * volume_size[0], 1)  # [D, H]
+    disp_volume = torch.stack([disp_volume] * volume_size[1], 2)  # [D, H, W]
+    disp_volume = torch.stack([disp_volume] * batch_size, 0)  # [N, D, H, W]
+    # disp_volume = disp_volume.unsqueeze(1)
     return disp_volume.cuda()
 
 
@@ -127,6 +127,10 @@ class SparseNet(nn.Module):
                 if m.bias is not None:
                     torch.nn.init.zeros_(m.bias)
 
+    def softmax_disp(self, volume_prob):
+        sparse_disp = torch.sum(input=volume_prob * self.disp_mat, dim=1, keepdim=True)
+        return sparse_disp
+
     def forward(self, x):
 
         # Image, pattern down sample:
@@ -197,11 +201,15 @@ class SparseNet(nn.Module):
         exp_volume_cost = torch.exp(-volume_cost) + self.epsilon  # [N, 1, H, W, D]
         sum_exp_volume_cost = torch.sum(input=exp_volume_cost, dim=4, keepdim=False)  # [N, 1, H, W]
 
-        if not self.vol:
-            sum_exp_mul = torch.sum(input=exp_volume_cost * self.disp_mat, dim=4, keepdim=False)  # [N, 1, H, W]
-            sparse_disp = sum_exp_mul / sum_exp_volume_cost  # [N, 1, H, W]
-            return sparse_disp
-        else:
-            sparse_volume = exp_volume_cost / sum_exp_volume_cost.unsqueeze(4)  # [N, 1, H, W, D]
-            sparse_volume = sparse_volume.permute(0, 4, 2, 3, 1).squeeze(4)
-            return sparse_volume
+        volume_prob = exp_volume_cost / sum_exp_volume_cost.unsqueeze(4)
+        sparse_prob = volume_prob.permute(0, 4, 2, 3, 1).squeeze(4)
+        return sparse_prob
+
+        # if not self.vol:
+        #     sum_exp_mul = torch.sum(input=exp_volume_cost * self.disp_mat, dim=4, keepdim=False)  # [N, 1, H, W]
+        #     sparse_disp = sum_exp_mul / sum_exp_volume_cost  # [N, 1, H, W]
+        #     return sparse_disp
+        # else:
+        #     sparse_volume = exp_volume_cost / sum_exp_volume_cost.unsqueeze(4)  # [N, 1, H, W, D]
+        #     sparse_volume = sparse_volume.permute(0, 4, 2, 3, 1).squeeze(4)
+        #     return sparse_volume

@@ -14,7 +14,9 @@ def generate_sparse_gt(root_path, down_k):
     # Step 1: Set data_loader
     batch_size = 1
     workers = 8
-    camera_dataset = CameraDataSet(root_path, 'DataNameList' + str(down_k) + '.csv', down_k=down_k)
+    opt_header = ('mask_mat', 'disp_mat')
+    opt = {'header': opt_header}
+    camera_dataset = CameraDataSet(root_path, 'DataNameList' + str(down_k) + '.csv', down_k=down_k, opts=opt)
     data_loader = DataLoader(camera_dataset, batch_size=batch_size, shuffle=False, num_workers=workers)
     print('Step 0: DataLoader size: %d.' % len(data_loader))
 

@@ -8,25 +8,23 @@ from torch.utils.data import Dataset
 class CameraDataSet(Dataset):
     """My camera image dataset."""
 
-    def __init__(self, root_dir, csv_name, down_k=4, disp_range=None, opts=None):
+    def __init__(self, root_dir, csv_name, down_k=3, disp_range=None, opts=None):
         if disp_range is None:
             disp_range = [716, 1724]
+
+        self.opt = opts
+        if opts is None:
+            self.opt = {}
+        if 'header' not in self.opt.keys():
+            self.opt['header'] = tuple()
+        if 'stride' not in self.opt.keys():
+            self.opt['stride'] = 1
+        if 'bias' not in self.opt.keys():
+            self.opt['bias'] = 0
+
         if opts is None:
             opts = {'vol': False, 'disp_c': False, 'dense': False, 'stride': 1}
         self.root_dir = root_dir
-        self.opt = opts
-        if 'dense' not in self.opt.keys():
-            self.opt['dense'] = False
-        if 'vol' not in self.opt.keys():
-            self.opt['vol'] = False
-        if 'disp_c' not in self.opt.keys():
-            self.opt['disp_c'] = False
-        if 'stride' not in self.opt.keys():
-            self.opt['stride'] = 1
-        if 'shade' not in self.opt.keys():
-            self.opt['shade'] = False
-        if 'idx_vec' not in self.opt.keys():
-            self.opt['idx_vec'] = False
 
         self.image_frame = []
         count = 0
@@ -36,7 +34,7 @@ class CameraDataSet(Dataset):
             f_csv = csv.reader(f)
             for row in f_csv:
                 count += 1
-                if count % opts['stride'] == 0:
+                if count % self.opt['stride'] == self.opt['bias']:
                     self.image_frame.append(row)
 
         # Load header
@@ -75,30 +73,35 @@ class CameraDataSet(Dataset):
     def __getitem__(self, idx):
         sample = {'idx': idx}
 
-        # Load image
-        img_name = self.get_path_by_name(name='cam_img', idx=idx)
-        image = plt.imread(img_name)
-        # print('Img: ', image.shape)
-        norm_image = torch.from_numpy((image.transpose((2, 0, 1)) - 0.5) * 2)
-        sample['cam_img'] = norm_image
-
         # Load mask
-        mask_name = self.get_path_by_name(name='mask_mat', idx=idx)
-        mask = plt.imread(mask_name)
-        norm_mask = torch.from_numpy(mask).byte().unsqueeze(0)
-        sample['mask_mat'] = norm_mask
+        if 'mask_mat' in self.opt['header']:
+            mask_name = self.get_path_by_name(name='mask_mat', idx=idx)
+            mask = plt.imread(mask_name)
+            norm_mask = torch.from_numpy(mask).byte().unsqueeze(0)
+            sample['mask_mat'] = norm_mask
 
-        # Load disp_set
-        disp_name = self.get_path_by_name(name='disp_mat', idx=idx)
-        disp_np_mat = np.fromfile(disp_name, dtype='<f4').reshape(self.W, self.H).transpose(1, 0)
-        disp_np_mat = (disp_np_mat - self.disp_range[0]) / (self.disp_range[1] - self.disp_range[0])
-        disp_np_mat = np.nan_to_num(disp_np_mat)
-        norm_disp_mat = torch.from_numpy(disp_np_mat).unsqueeze(0)
-        norm_disp_mat[norm_mask == 0] = 0
-        sample['disp_mat'] = norm_disp_mat
+        # Load cam_img
+        if 'cam_img' in self.opt['header']:
+            img_name = self.get_path_by_name(name='cam_img', idx=idx)
+            image = plt.imread(img_name)
+            # print('Img: ', image.shape)
+            norm_image = torch.from_numpy((image.transpose((2, 0, 1)) - 0.5) * 2)
+            sample['cam_img'] = norm_image
 
-        # Generate idx_mat
-        if self.opt['idx_vec']:
+        # Load disp_set (Need norm_mask)
+        if 'disp_mat' in self.opt['header']:
+            disp_name = self.get_path_by_name(name='disp_mat', idx=idx)
+            disp_np_mat = np.fromfile(disp_name, dtype='<f4').reshape(self.W, self.H).transpose(1, 0)
+            disp_np_mat = (disp_np_mat - self.disp_range[0]) / (self.disp_range[1] - self.disp_range[0])
+            disp_np_mat = np.nan_to_num(disp_np_mat)
+            norm_disp_mat = torch.from_numpy(disp_np_mat).unsqueeze(0)
+            norm_mask = sample['mask_mat']
+            norm_disp_mat[norm_mask == 0] = 0
+            sample['disp_mat'] = norm_disp_mat
+
+        # Generate idx_vec (Need norm_image)
+        if 'idx_vec' in self.opt['header']:
+            norm_disp_mat = sample['disp_mat']
             disp_raw = norm_disp_mat * (self.disp_range[1] - self.disp_range[0]) + self.disp_range[0]
             tmp_mat = (disp_raw * self.para_D[2] + self.para_M[2, :, :] * self.f_tvec_mul)
             x_pro_mat = (disp_raw * self.para_D[0] + self.para_M[0, :, :] * self.f_tvec_mul) / tmp_mat
@@ -107,38 +110,20 @@ class CameraDataSet(Dataset):
             y_pro_mat = torch.remainder(torch.round(y_pro_mat), self.H_p).type(torch.LongTensor)
             idx_pro_mat = y_pro_mat * self.W_p + x_pro_mat
             idx_pro_mat[norm_mask == 0] = 0
-            idx_pro_vec = idx_pro_mat.reshape(norm_image.shape[1] * norm_image.shape[2])
+            idx_pro_vec = idx_pro_mat.reshape(norm_mask.shape[1] * norm_mask.shape[2])
             assert torch.max(idx_pro_vec).item() <= self.H_p * self.W_p - 1 and torch.min(idx_pro_vec).item() >= 0
             sample['idx_vec'] = idx_pro_vec
 
         # Load shade_mat
-        if self.opt['shade']:
+        if 'shade_mat' in self.opt['header']:
             shade_name = self.get_path_by_name(name='shade_mat', idx=idx)
             shade_mat = plt.imread(shade_name)
             shade_mat = shade_mat[:, :, 1]
             norm_shade = torch.from_numpy(shade_mat).unsqueeze(0)
             sample['shade_mat'] = norm_shade
 
-        # Load disp_out
-        if self.opt['dense']:
-            disp_out_name = self.get_path_by_name(name='disp_out', idx=idx)
-            disp_out_np_mat = np.load(disp_out_name)  # In (0, 1], .npy
-            disp_out_np_mat = np.nan_to_num(disp_out_np_mat)
-            norm_disp_out_mat = torch.from_numpy(disp_out_np_mat).unsqueeze(0)  # [1, H, W]
-            # norm_disp_out_mat[norm_mask == 0] = 0
-            sample['disp_out'] = norm_disp_out_mat
-
-        # Load img_est
-        if self.opt['dense']:
-            img_est_name = self.get_path_by_name(name='est_img', idx=idx)
-            img_est = plt.imread(img_est_name)
-            img_est = img_est[:, :, :3]
-            # print('Est: ', img_est.shape)
-            norm_est_img = torch.from_numpy((img_est.transpose((2, 0, 1)) - 0.5) * 2)
-            sample['est_img'] = norm_est_img
-
         # Load mask_c
-        if self.opt['disp_c'] or self.opt['vol']:
+        if 'mask_c' in self.opt['header']:
             mask_c_name = self.get_path_by_name(name='mask_c', idx=idx)
             mask_c = plt.imread(mask_c_name)
             mask_c = mask_c[:, :, 1]
@@ -146,7 +131,7 @@ class CameraDataSet(Dataset):
             sample['mask_c'] = norm_mask_c
 
         # Load disp_c
-        if self.opt['disp_c']:
+        if 'disp_c' in self.opt['header']:
             disp_c_name = self.get_path_by_name(name='disp_c', idx=idx)
             disp_c_np_mat = np.load(disp_c_name)  # In (0, 1], .npy
             # disp_c_np_mat = np.fromfile(disp_c_name, dtype='<f4').reshape(self.Wc, self.Hc).transpose(1, 0)
@@ -157,14 +142,33 @@ class CameraDataSet(Dataset):
             sample['disp_c'] = disp_c_mat
 
         # Load disp_v
-        if self.opt['vol']:
+        if 'disp_v' in self.opt['header']:
             disp_v_name = self.get_path_by_name(name='disp_v', idx=idx)
-            disp_v_np_mat = np.fromfile(disp_v_name, dtype='<u1').reshape(self.D, self.Wc, self.Hc).transpose([0, 2, 1])
+            disp_v_np_mat = np.fromfile(disp_v_name, dtype='<u1').reshape(self.D, self.Wc, self.Hc).transpose(
+                    [0, 2, 1])
             disp_v_np_mat = np.nan_to_num(disp_v_np_mat)
             disp_v_mat = torch.from_numpy(disp_v_np_mat).type(torch.FloatTensor)  # [D, Hc, Wc]
             sum_disp_v_mat = torch.sum(input=disp_v_mat, dim=0, keepdim=True)
             norm_v_mat = disp_v_mat / sum_disp_v_mat
             norm_v_mat[torch.isnan(norm_v_mat)] = 0
             sample['disp_v'] = norm_v_mat
+
+        # Load disp_out
+        if 'disp_out' in self.opt['header']:
+            disp_out_name = self.get_path_by_name(name='disp_out', idx=idx)
+            disp_out_np_mat = np.load(disp_out_name)  # In (0, 1], .npy
+            disp_out_np_mat = np.nan_to_num(disp_out_np_mat)
+            norm_disp_out_mat = torch.from_numpy(disp_out_np_mat).unsqueeze(0)  # [1, H, W]
+            # norm_disp_out_mat[norm_mask == 0] = 0
+            sample['disp_out'] = norm_disp_out_mat
+
+        # Load img_est
+        if 'est_img' in self.opt['header']:
+            img_est_name = self.get_path_by_name(name='est_img', idx=idx)
+            img_est = plt.imread(img_est_name)
+            img_est = img_est[:, :, :3]
+            # print('Est: ', img_est.shape)
+            norm_est_img = torch.from_numpy((img_est.transpose((2, 0, 1)) - 0.5) * 2)
+            sample['est_img'] = norm_est_img
 
         return sample

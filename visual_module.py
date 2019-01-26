@@ -59,29 +59,21 @@ def disp_visual(gt_c, res_c, mask_c, vis, win_imgs, nrow=4):
 
 
 def pattern_visual(input_set, vis, win_imgs, win_cam, win_pattern):
-    disp_c = input_set[0]
-    sparse_disp = input_set[1]
-    mask_c = input_set[2]
-    pattern = input_set[3][0, :, :, :]
-    image = input_set[4]
-    sparse_pattern = input_set[5][0, :, :, :]
+    # disp_c = input_set[0]
+    selected_prob = input_set[0]
+    mask_c = input_set[1]
+    pattern = input_set[2][0, :, :, :]
+    image = input_set[3]
+    sparse_pattern = input_set[4][0, :, :, :]
 
     # Calculate disp for N set
-    sparse_disp[mask_c == 0] = 0
-    show_disp_set = torch.cat((disp_c, sparse_disp), dim=3)
+    selected_prob[mask_c == 0] = 0
+    show_disp_set = selected_prob
     show_disp_set = torch.nn.functional.interpolate(input=show_disp_set, scale_factor=2.0, mode='nearest')
     vis.images(show_disp_set * 255.0, nrow=1, padding=2, win=win_imgs)
 
     # Show pattern & image
     vis.image((pattern / 2 + 0.5), win=win_pattern)
-    # vis.text(str(torch.max(pattern)) + '<br>' + str(torch.min(pattern)), win="Info")
-    # max_val = torch.max(pattern).item()
-    # min_val = torch.min(pattern).item()
-    # vis.image((pattern - min_val) / (max_val - min_val), win='Normed_Pattern')
-    # vis.line(X=torch.FloatTensor([x_pos]), Y=torch.FloatTensor([max_val]), win=win_pat_val,
-    #          update='append', name='max', opts=dict(showlegend=True))
-    # vis.line(X=torch.FloatTensor([x_pos]), Y=torch.FloatTensor([min_val]), win=win_pat_val,
-    #          update='append', name='min', opts=dict(showlegend=True))
     show_img_set = torch.nn.functional.interpolate(input=image, scale_factor=0.25, mode='nearest')
     vis.images(show_img_set / 2 + 0.5, nrow=1, padding=2, win=win_cam)
 
@@ -117,3 +109,97 @@ def dense_visual(input_set, output_set, vis, win_img, win_disp):
     show_disp = torch.stack((disp_in, disp_res, disp_gt), dim=0)
     show_disp = torch.nn.functional.interpolate(input=show_disp, scale_factor=0.5, mode='nearest')
     vis.images(show_disp * 255.0, nrow=3, padding=4, win=win_disp)
+
+
+def iter_visual_report(vis, win_set, input_set):
+    """
+    Draw visual elements for train_iter.py, report version
+    :param vis: visdom environment.
+    :param win_set: {'g_loss', 'd_loss', 'image', 'match', 'disp', 'pattern', 'pattern_box'}
+    :param input_set: ((i, epoch, length, report_period), (g_loss, d_loss), (pattern_mat, sparse_pattern),
+                       (mask_c, image_mat, disp_est, selected_prob, disp_gt))
+    :return: report_message
+    """
+    # Draw loss line
+    i, epoch, length, report = input_set[0]
+    g_loss, d_loss = input_set[1]
+    g_average = g_loss / report
+    d_average = d_loss / report
+    g_opts = dict(showlegend=True, title='Generator Loss', width=480, height=360)
+    d_opts = dict(showlegend=True, title='Discriminator Loss', width=480, height=360)
+    x_pos = torch.FloatTensor([epoch + i / length])
+    vis.line(X=x_pos, Y=torch.FloatTensor([g_average]), win=win_set['g_loss'],
+             update='append', name='train_report', opts=g_opts)
+    vis.line(X=x_pos, Y=torch.FloatTensor([d_average]), win=win_set['d_loss'],
+             update='append', name='train_respot', opts=d_opts)
+    # Show pattern, pattern_boxplot
+    pattern, sparse_pattern = input_set[2]
+    vis.image((pattern / 2 + 0.5), win=win_set['pattern'])
+    pattern_c_base = sparse_pattern.reshape((sparse_pattern.shape[0],
+                                             sparse_pattern.shape[1] * sparse_pattern.shape[2])).transpose(1, 0)
+    box_opts = dict(showlegend=True, title='Pattern Boxplot', width=480, height=360, legend=['R', 'G', 'B'])
+    vis.boxplot(X=pattern_c_base, opts=box_opts, win=win_set['pattern_box'])
+    # Show rendered image, disparity, prob
+    mask_c, image, disp_mat, volume_prob, disp_gt = input_set[3]
+    # image[mask_c == 0] = 0
+    disp_mat[mask_c == 0] = 0
+    disp_gt[mask_c == 0] = 0
+    volume_prob[mask_c == 0] = 0
+    show_disp_mat = torch.cat((disp_gt, disp_mat, volume_prob), dim=2)
+    show_disp_mat = torch.nn.functional.interpolate(input=show_disp_mat, scale_factor=2.0, mode='nearest')
+    vis.images(show_disp_mat, nrow=4, padding=2, win=win_set['disp'])
+    show_img_set = torch.nn.functional.interpolate(input=image, scale_factor=0.25, mode='nearest')
+    vis.images(show_img_set / 2 + 0.5, nrow=4, padding=2, win=win_set['image'])
+    # Generate report info
+    report_message = '[%d, %4d/%d]: %.2e, %.2e' % (epoch + 1, i + 1, length, g_average, d_average)
+    return report_message
+
+
+def iter_visual_epoch(vis, win_set, input_set):
+    """
+    Draw visual elements for train_iter.py, epoch version
+    :param vis: visdom environment
+    :param win_set: {'g_loss', 'd_loss'}
+    :param input_set: ((epoch, length), (g_loss, d_loss))
+    :return: report message
+    """
+    # Draw loss line
+    epoch, length = input_set[0]
+    g_loss, d_loss = input_set[1]
+    g_average = g_loss / length
+    d_average = d_loss / length
+    g_opts = dict(showlegend=True, title='Generator Loss', width=480, height=360)
+    d_opts = dict(showlegend=True, title='Discriminator Loss', width=480, height=360)
+    x_pos = torch.FloatTensor([epoch + 0.5])
+    vis.line(X=x_pos, Y=torch.FloatTensor([g_average]), win=win_set['g_loss'],
+             update='append', name='train_epoch', opts=g_opts)
+    vis.line(X=x_pos, Y=torch.FloatTensor([d_average]), win=win_set['d_loss'],
+             update='append', name='train_epoch', opts=d_opts)
+    # Generate report info
+    report_message = '    Epoch Train[%d]: %.2e, %.2e' % (epoch + 1, g_average, d_average)
+    return report_message
+
+
+def iter_visual_test(vis, win_set, input_set):
+    """
+    Draw visual elements for train_iter.py, test version
+    :param vis: visdom environment
+    :param win_set: {'g_loss', 'd_loss'}
+    :param input_set: ((epoch, length), (g_loss, d_loss))
+    :return: report message
+    """
+    # Draw loss line
+    epoch, length = input_set[0]
+    g_loss, d_loss = input_set[1]
+    g_average = g_loss / length
+    d_average = d_loss / length
+    g_opts = dict(showlegend=True, title='Generator Loss', width=480, height=360)
+    d_opts = dict(showlegend=True, title='Discriminator Loss', width=480, height=360)
+    x_pos = torch.FloatTensor([epoch + 0.5])
+    vis.line(X=x_pos, Y=torch.FloatTensor([g_average]), win=win_set['g_loss'],
+             update='append', name='test_epoch', opts=g_opts)
+    vis.line(X=x_pos, Y=torch.FloatTensor([d_average]), win=win_set['d_loss'],
+             update='append', name='test_epoch', opts=d_opts)
+    # Generate report info
+    report_message = '    Epoch Test[%d]: %.2e, %.2e' % (epoch + 1, g_average, d_average)
+    return report_message
