@@ -8,7 +8,7 @@ class GeneratorNet(nn.Module):
     Input: (Random Tensor) 64
         latent tensor: [N, C=1, 64]
     Output: Pattern, [16, 128]
-        pattern: [N, C=1, H_sp=16, W_sp=128] range: [0, 1]
+        pattern: [N, C=1, H_sp=16, W_sp=128] range: [-1, 1]
         will be interpolated 8 times
     """
 
@@ -34,11 +34,12 @@ class GeneratorNet(nn.Module):
 
         # Self linear layers
         self.fc_layers = []
-        in_channel = self.C * self.Hc * self.Wc
-        out_channel = self.C * self.Hc * self.Wc
+        # in_channel = self.C * self.Hc * self.Wc
+        # out_channel = self.C * self.Hc * self.Wc
         for i in range(0, 2):
             tmp_fc = nn.Sequential(
-                nn.Linear(in_channel, out_channel),
+                # nn.Linear(in_channel, out_channel),
+                nn.Conv2d(self.C, self.C, kernel_size=5, padding=2),
                 nn.LeakyReLU(negative_slope=0.2, inplace=True)
             )
             self.fc_layers.append(tmp_fc)
@@ -46,6 +47,7 @@ class GeneratorNet(nn.Module):
 
         # Output layers
         self.out_layer = nn.Sequential(
+            # nn.Linear(in_channel, out_channel),
             nn.Conv2d(self.C, self.C, kernel_size=3, padding=1),
             nn.Tanh()
         )
@@ -61,16 +63,19 @@ class GeneratorNet(nn.Module):
 
         # Input layer
         fc_res = self.in_layer(x)
+        sparse_mat = fc_res.reshape(self.N, self.C, self.Hc, self.Wc)
+        # print('sparse_mat: ', sparse_mat.shape)
 
         # self linear layers
         for i in range(0, 2):
-            fc_res = self.fc_layers[i](fc_res)
+            sparse_mat = self.fc_layers[i](sparse_mat)
 
-        # Reshape
-        sparse_mat = fc_res.reshape(self.N, self.C, self.Hc, self.Wc)
+        # # Reshape (Conv2d)
+        # sparse_mat = fc_res.reshape(self.N, self.C, self.Hc, self.Wc)
 
         # Output layers
         sparse_pattern = self.out_layer(sparse_mat)
+        # sparse_pattern = sparse_vec.reshape(self.N, self.C, self.Hc, self.Wc)
         return sparse_pattern
 
         # print('sparse_pattern:', sparse_pattern.shape)

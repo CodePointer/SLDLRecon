@@ -121,6 +121,9 @@ class SparseNet(nn.Module):
             self.volume_convs = nn.ModuleList(self.volume_convs)
             self.volume_out = nn.Conv3d(32, 32, kernel_size=3, padding=1)
 
+        # Softmax layer
+        self.softmax = nn.Softmax(dim=4)  # [N, 1, H, W, D]
+
     def init_weights(self):
         for m in self.modules():
             if isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
@@ -128,15 +131,12 @@ class SparseNet(nn.Module):
                 if m.bias is not None:
                     torch.nn.init.zeros_(m.bias)
 
-    def softmax_disp(self, volume_prob):
-        sparse_disp = torch.sum(input=volume_prob * self.disp_mat, dim=1, keepdim=True)
-        return sparse_disp
-
     def forward(self, x):
 
         # Image, pattern down sample:
         image_dn_conv_out = [x[0]]
         pattern_dn_conv_out = [x[1]]
+        g_flag = x[2]
         for i in range(0, self.K):
             img_padding = self.rep_pad_2(image_dn_conv_out[i])
             img_out_val = self.dn_convs[i](img_padding)
@@ -189,7 +189,14 @@ class SparseNet(nn.Module):
         # print('pattern_align_vec: ', pattern_align_vec.shape)
         pattern_align = pattern_align_vec.reshape(pattern_shape[0], pattern_shape[1], self.H, self.W, self.D)
         # print('pattern_align: ', pattern_align.shape)
+        # print('image_stack: ', image_stack.shape)
         cost_volume = image_stack - pattern_align  # [N, C, H, W, D]
+
+        if g_flag:
+            volume_cost_pre = - (torch.norm(input=cost_volume, p=2, dim=1, keepdim=True) + self.epsilon)  # [N, 1, H, W, D]
+            volume_prob_pre = self.softmax(volume_cost_pre)  # [N, 1, H, W, D]
+            sparse_prob_pre = volume_prob_pre.permute(0, 4, 2, 3, 1).squeeze(4)  # [N, D, H, W]
+            return sparse_prob_pre
 
         # self conv on cost_volume
         if not self.vol:
@@ -198,13 +205,12 @@ class SparseNet(nn.Module):
             cost_volume = self.volume_out(cost_volume)
 
         # Soft-max for select
-        volume_cost = torch.norm(input=cost_volume, p=2, dim=1, keepdim=True)  # [N, 1, H, W, D]
-        exp_volume_cost = torch.exp(-volume_cost) + self.epsilon  # [N, 1, H, W, D]
-        sum_exp_volume_cost = torch.sum(input=exp_volume_cost, dim=4, keepdim=False)  # [N, 1, H, W]
-
-        volume_prob = exp_volume_cost / sum_exp_volume_cost.unsqueeze(4)
+        volume_cost = - (torch.norm(input=cost_volume, p=2, dim=1, keepdim=True) + self.epsilon)  # [N, 1, H, W, D]
+        volume_prob = self.softmax(volume_cost)  # [N, 1, H, W, D]
         sparse_prob = volume_prob.permute(0, 4, 2, 3, 1).squeeze(4)
-        return sparse_prob
+        sparse_disp = torch.sum(input=sparse_prob * self.disp_mat, dim=1, keepdim=True)
+
+        return sparse_disp
 
         # if not self.vol:
         #     sum_exp_mul = torch.sum(input=exp_volume_cost * self.disp_mat, dim=4, keepdim=False)  # [N, 1, H, W]
