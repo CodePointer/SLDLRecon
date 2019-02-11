@@ -88,6 +88,7 @@ class SparseNet(nn.Module):
             )
             tmp_self_conv = nn.Sequential(
                 nn.Conv2d(dn_conv_planes[i + 1], dn_conv_planes[i + 1], kernel_size=3, padding=0),
+                nn.BatchNorm2d(dn_conv_planes[i + 1]),
                 nn.ReLU(inplace=True)
             )
             self.dn_convs.append(tmp_conv)

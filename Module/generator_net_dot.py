@@ -32,7 +32,7 @@ class GeneratorNet(nn.Module):
         # Input layers
         self.in_layer = nn.Sequential(
             nn.Linear(1, self.dot_num * 2, bias=False),
-            nn.Sigmoid()
+            nn.Tanh()
         )
 
         self.thred_filter = nn.ReLU(inplace=True)
@@ -57,7 +57,7 @@ class GeneratorNet(nn.Module):
         # Input layer
         fc_res = self.in_layer(x)
         point_set = fc_res.reshape(self.N, self.dot_num, 2)
-        # point_set = (point_set / 2 + 0.5)
+        point_set = (point_set / 2 + 0.5)
         # print('sparse_mat: ', sparse_mat.shape)
 
         # Calculate distance

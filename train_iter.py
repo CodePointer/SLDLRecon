@@ -2,25 +2,36 @@ import sys
 from data_set import CameraDataSet
 from torch.utils.data import DataLoader
 # from Module.generator_net import GeneratorNet
-from Module.generator_net_dot import GeneratorNet
-# from Module.generator_net_grey import GeneratorNet
+# from Module.generator_net_dot import GeneratorNet
+from Module.generator_net_grey import GeneratorNet
 # from Module.sparse_net import SparseNet
 from Module.sparse_net_grey import SparseNet
 import torch
 import torchvision
 import math
 import numpy as np
+import scipy.stats as st
 import os
 import visdom
 import visual_module as vm
 
 
 def lr_change(epoch):
-    epoch = epoch // 150
-    return 0.5 ** epoch
+    epoch = epoch // 50
+    return 1 ** epoch
 
 
-def render_image(pattern, idx_vec, mask_mat):
+def gkern(kernlen=21, nsig=3):
+    """Returns a 2D Gaussian kernel array."""
+    interval = (2*nsig+1.0) / kernlen
+    x = np.linspace(-nsig-interval/2.0, nsig+interval/2.0, kernlen+1)
+    kern1d = np.diff(st.norm.cdf(x))
+    kernel_raw = np.sqrt(np.outer(kern1d, kern1d))
+    kernel = kernel_raw / kernel_raw.sum()
+    return kernel
+
+
+def render_image(pattern, idx_vec, mask_mat, gkernel):
     ###############
     # parameters: #
     ###############
@@ -41,7 +52,8 @@ def render_image(pattern, idx_vec, mask_mat):
         include pattern noise and image noise.
     '''
 
-    pattern_noise = torch.randn(pattern.shape).cuda() / 3 * p_noise_rad
+    pattern_bias = torch.randn(1).item() / 3 * 0.3
+    pattern_noise = torch.randn(pattern.shape).cuda() / 3 * p_noise_rad + pattern_bias
     dense_pattern = torch.nn.functional.interpolate(input=pattern + pattern_noise, scale_factor=8, mode='bilinear',
                                                     align_corners=False)
     # pattern_rearrange = pattern_mat.transpose(1, 0)
@@ -51,6 +63,11 @@ def render_image(pattern, idx_vec, mask_mat):
     idx_vec_plain = idx_vec.reshape(batch_size * cam_height * cam_width)
     est_img_vec = torch.index_select(input=pattern_search, dim=1, index=idx_vec_plain)
     image_mat = est_img_vec.reshape(pattern_channel, batch_size, cam_height, cam_width).transpose(1, 0)
+
+    # Project Gaussian Blur
+    image_mat = torch.nn.functional.conv2d(image_mat, gkernel, padding=7 // 2)
+
+    # Image noise
     image_noise = torch.randn(image_mat.shape).cuda() / 3 * i_noise_rad
     image_mat = image_mat + image_noise
     image_mat = torch.clamp(image_mat, min=-1, max=1)
@@ -107,14 +124,18 @@ def train_iteration(root_path, lr_n, start_epoch=1):
                'pattern': 'Generated Pattern',
                'pattern_box': 'Pattern Boxplot'}
 
-    learning_rate = math.pow(0.1, lr_n)
-    print('learning_rate: %.1e' % learning_rate)
+    g_lr_n, e_lr_n = lr_n
+    g_lr = math.pow(0.1, g_lr_n)
+    e_lr = math.pow(0.1, e_lr_n)
+    gkernel = torch.from_numpy(gkern(7, nsig=2)).unsqueeze(0).unsqueeze(1)  # [1, 1, Hk, Wk]
+    gkernel = gkernel.float().cuda()
+    print('learning_rate: %.1e/%.1e' % (g_lr, e_lr))
 
     pattern_network = GeneratorNet(root_path=root_path, batch_size=batch_size)
     sparse_network = SparseNet(root_path=root_path, batch_size=batch_size, down_k=down_k)
     criterion = torch.nn.SmoothL1Loss()
-    pattern_opt = torch.optim.Adam(pattern_network.parameters(), lr=learning_rate * 0.1, betas=(0.9, 0.999))
-    sparse_opt = torch.optim.Adam(sparse_network.parameters(), lr=learning_rate, betas=(0.9, 0.999))
+    pattern_opt = torch.optim.Adam(pattern_network.parameters(), lr=g_lr, betas=(0.9, 0.999))
+    sparse_opt = torch.optim.Adam(sparse_network.parameters(), lr=e_lr, betas=(0.9, 0.999))
     print('Step 1: Initialize finished.')
 
     # Step 2: Model loading
@@ -138,9 +159,9 @@ def train_iteration(root_path, lr_n, start_epoch=1):
     # criterion = criterion.cuda()
     sparse_network = sparse_network.cuda()
     pattern_network = pattern_network.cuda()
-    # pattern_seed = torch.from_numpy(np.load('random_seed.npy')).float().cuda()
+    pattern_seed = torch.from_numpy(np.load('random_seed.npy')).float().cuda()
     # pattern_seed = torch.ones(64).cuda()
-    pattern_seed = torch.ones(1).cuda()
+    # pattern_seed = torch.ones(1).cuda()
     pattern_seed = (pattern_seed - 0.5) * 2
     pattern_seed = torch.stack([pattern_seed] * batch_size, dim=0).unsqueeze(1)
     for epoch in range(start_epoch - 1, 5000):
@@ -177,7 +198,7 @@ def train_iteration(root_path, lr_n, start_epoch=1):
             dense_pattern = torch.nn.functional.interpolate(input=sparse_pattern, scale_factor=8, mode='bilinear',
                                                             align_corners=False)
             pattern_mat = dense_pattern
-            image_mat = render_image(pattern=sparse_pattern, idx_vec=idx_vec, mask_mat=mask_mat)
+            image_mat = render_image(pattern=sparse_pattern, idx_vec=idx_vec, mask_mat=mask_mat, gkernel=gkernel)
 
             # sparse_prob_pre = sparse_network((image_mat, pattern_mat, g_flag))
             # selected_prob = select_prob(sparse_prob_pre, disp_c, mask_c)
@@ -249,7 +270,7 @@ def train_iteration(root_path, lr_n, start_epoch=1):
                 dense_pattern = torch.nn.functional.interpolate(input=sparse_pattern, scale_factor=8, mode='bilinear',
                                                                 align_corners=False)
                 pattern_mat = dense_pattern
-                image_mat = render_image(pattern=sparse_pattern, idx_vec=idx_vec, mask_mat=mask_mat)
+                image_mat = render_image(pattern=sparse_pattern, idx_vec=idx_vec, mask_mat=mask_mat, gkernel=gkernel)
                 # sparse_prob_pre = sparse_network((image_mat, pattern_mat, g_flag))
                 # selected_prob = select_prob(sparse_prob_pre, disp_c, mask_c)
                 # # Calculate loss
@@ -282,7 +303,7 @@ def train_iteration(root_path, lr_n, start_epoch=1):
             assert check_nan_param(pattern_network)
         except AssertionError as inst:
             torch.save(pattern_network.state_dict(), 'model_pattern_error.pt')
-            torch.save(pattern_network.state_dict(), 'model_sparse_error.pt')
+            torch.save(sparse_network.state_dict(), 'model_sparse_error.pt')
             print(inst)
             raise
 
@@ -302,16 +323,17 @@ def train_iteration(root_path, lr_n, start_epoch=1):
 
 def main(argv):
     # Input parameters
-    lr_n = int(argv[1])
+    g_lr_n = int(argv[1])
+    e_lr_n = int(argv[2])
 
     # Get start epoch num
     start_epoch = 1
-    if len(argv) >= 3:
-        start_epoch = int(argv[2])
+    if len(argv) >= 4:
+        start_epoch = int(argv[3])
 
-    train_iteration(root_path='./SLDataSet/20181204/', start_epoch=start_epoch, lr_n=lr_n)
+    train_iteration(root_path='./SLDataSet/20181204/', start_epoch=start_epoch, lr_n=(g_lr_n, e_lr_n))
 
 
 if __name__ == '__main__':
-    assert len(sys.argv) >= 2
+    assert len(sys.argv) >= 3
     main(sys.argv)
