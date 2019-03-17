@@ -5,10 +5,15 @@ import numpy as np
 
 def main(out_file, k):
     total_list = []
-    data_sets = [('DataSetW1', 1000), ('DataSetW2', 1000), ('DataSetW3', 1000), ('DataSetW4', 1000)]
+    data_sets = [('DataSetW' + str(i), 1000) for i in range(1, 9, 1)]
     data_types = [('cam_img', 'cam_img', '.png'),
                   ('disp_mat', 'disp_mat', '.bin'),
+                  ('disp_cam', 'disp_cam', '.npy'),
                   ('mask_mat', 'mask_mat', '.png'),
+                  ('mask_cam', 'mask_cam', '.png'),
+                  ('cor_xc', 'cor_xc', '.npy'),
+                  ('cor_yc', 'cor_yc', '.npy'),
+                  ('mask_pro', 'mask_pro', '.png'),
                   ('shade_mat', 'shade_mat', '.png'),
                   ('disp_c' + str(k), 'disp_c', '.npy'),
                   ('disp_v' + str(k), 'disp_v', '.bin'),
@@ -34,6 +39,7 @@ def main(out_file, k):
     for i in range(0, len(data_types)):
         header_dict[data_types[i][1]] = i + 1
     np.save(out_file + '.npy', header_dict)
+    print(header_dict)
 
     return
 

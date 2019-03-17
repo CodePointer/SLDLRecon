@@ -8,7 +8,6 @@ Module/__pycache__/*
 *.pyc
 *.txt
 *.bin
-test.bin.npy
-res_pattern.npy
 test_1pic_1210/*
-*/*.npy
+*.npy
+*.png

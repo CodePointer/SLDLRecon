@@ -1,86 +1,116 @@
 import torch
 import torch.nn as nn
+import math
 
 
 class GeneratorNet(nn.Module):
     """
     The GeneratorNet is designed to generate pattern from a random tensor.
-    Input: (Random Tensor) 64
-        latent tensor: [N, C=1, 64]
-    Output: Pattern, [16, 128]
+    Input: 2 Image with grid pattern
+        Image: [N, C=1, H, W] * 1
+    Output: Pattern, [128, 1024]
         pattern: [N, C=1, H_sp=16, W_sp=128] range: [-1, 1]
-        will be interpolated 8 times
+        2D grid version
     """
 
-    def __init__(self, root_path, batch_size, opts=None):
+    def __init__(self, para_sec, batch_size, opts=None):
         super(GeneratorNet, self).__init__()
 
         if opts is None:
             opts = {}
-        self.in_size = 64
         self.N = batch_size
-        self.H = int(128)
-        self.Hc = int(128/8)
-        self.W = int(1024)
-        self.Wc = int(1024/8)
+        self.Hp = para_sec.getint('pro_height')
+        self.Wp = para_sec.getint('pro_width')
         self.C = 1
+        self.scale = 1
+        self.in_size = 64
+        self.conv_k = 6
+        self.Hc = int(para_sec.getfloat('cam_height') / math.pow(2, self.conv_k))
+        self.Wc = int(para_sec.getfloat('cam_width') / math.pow(2, self.conv_k))
+
         self.epsilon = 1e-10
+        self.thred = 1.0
 
-        # Input layers
-        self.in_layer = nn.Sequential(
-            nn.Linear(64, self.C * self.Hc * self.Wc),
-            nn.LeakyReLU(negative_slope=0.2, inplace=True)
-        )
-
-        # Self linear layers
-        self.fc_layers = []
-        # in_channel = self.C * self.Hc * self.Wc
-        # out_channel = self.C * self.Hc * self.Wc
-        for i in range(0, 2):
-            tmp_fc = nn.Sequential(
-                # nn.Linear(in_channel, out_channel),
-                nn.Conv2d(self.C, self.C, kernel_size=5, padding=2),
-                nn.LeakyReLU(negative_slope=0.2, inplace=True)
+        # Down Sample layers
+        self.dn_convs = []
+        self.dn_self_convs = []
+        dn_conv_planes = [self.C, 4, 8, 16, 32, 64, 64]
+        for i in range(0, self.conv_k):
+            tmp_conv = nn.Sequential(
+                nn.Conv2d(dn_conv_planes[i], dn_conv_planes[i + 1],
+                          kernel_size=3, stride=2, padding=1),
+                nn.ReLU(inplace=True)
             )
-            self.fc_layers.append(tmp_fc)
-        self.fc_layers = nn.ModuleList(self.fc_layers)
+            tmp_self_conv = nn.Sequential(
+                nn.Conv2d(dn_conv_planes[i + 1], dn_conv_planes[i + 1], kernel_size=3, padding=1),
+                nn.BatchNorm2d(dn_conv_planes[i + 1]),
+                nn.ReLU(inplace=True)
+            )
+            self.dn_convs.append(tmp_conv)
+            self.dn_self_convs.append(tmp_self_conv)
+        self.dn_convs = nn.ModuleList(self.dn_convs)
+        self.dn_self_convs = nn.ModuleList(self.dn_self_convs)
 
-        # Output layers
-        self.out_layer = nn.Sequential(
-            # nn.Linear(in_channel, out_channel),
-            nn.Conv2d(self.C, self.C, kernel_size=3, padding=1),
+        # Vector extraction layer
+        self.linear_out = nn.Linear(self.Hc * self.Wc * dn_conv_planes[-1], 64)
+
+        # h_layers
+        self.h_linears = []
+        h_linear_planes = [64, self.Hp, self.Hp, self.Hp]
+        for i in range(0, 3):
+            tmp_layer = nn.Sequential(
+                nn.Linear(h_linear_planes[i], h_linear_planes[i + 1]),
+                nn.ReLU(inplace=True)
+            )
+            self.h_linears.append(tmp_layer)
+        self.h_linears = nn.ModuleList(self.h_linears)
+        self.h_out_layer = nn.Sequential(
+            nn.Linear(h_linear_planes[-1], self.Hp),
             nn.Tanh()
         )
 
-    def init_weights(self):
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
-                torch.nn.init.xavier_uniform_(m.weight)
-                if m.bias is not None:
-                    torch.nn.init.zeros_(m.bias)
+        # h_layers
+        self.w_linears = []
+        w_linear_planes = [64, self.Wp, self.Wp, self.Wp]
+        for i in range(0, 3):
+            tmp_layer = nn.Sequential(
+                nn.Linear(w_linear_planes[i], w_linear_planes[i + 1]),
+                nn.ReLU(inplace=True)
+            )
+            self.w_linears.append(tmp_layer)
+        self.w_linears = nn.ModuleList(self.w_linears)
+        self.w_out_layer = nn.Sequential(
+            nn.Linear(w_linear_planes[-1], self.Wp),
+            nn.Tanh()
+        )
+
+        self.final_layer = nn.Hardtanh()
 
     def forward(self, x):
 
-        # Input layer
-        fc_res = self.in_layer(x)
-        sparse_mat = fc_res.reshape(self.N, self.C, self.Hc, self.Wc)
-        # print('sparse_mat: ', sparse_mat.shape)
+        for i in range(0, self.conv_k):
+            x = self.dn_convs[i](x)
+            x = self.dn_self_convs[i](x)
+        feature_vec = self.linear_out(x.reshape(self.N, 1, self.Hc * self.Wc * 64))
+        # feature_vec = x
 
-        # self linear layers
-        for i in range(0, 2):
-            sparse_mat = self.fc_layers[i](sparse_mat)
+        # h_vector
+        h_vec = feature_vec
+        for i in range(0, 3):
+            h_vec = self.h_linears[i](h_vec)
+        h_vec = self.h_out_layer(h_vec)
+        h_up_out = torch.nn.functional.interpolate(input=h_vec, scale_factor=self.scale)  # [N, 1, Hp]
+        h_vec_out = h_up_out.unsqueeze(3)  # [N, 1, Hp, 1]
 
-        # # Reshape (Conv2d)
-        # sparse_mat = fc_res.reshape(self.N, self.C, self.Hc, self.Wc)
+        # w_vector
+        w_vec = feature_vec
+        for i in range(0, 3):
+            w_vec = self.w_linears[i](w_vec)
+        w_vec = self.w_out_layer(w_vec)
+        w_up_out = torch.nn.functional.interpolate(input=w_vec, scale_factor=self.scale)
+        w_vec_out = w_up_out.unsqueeze(2)  # [N, 1, 1, Wp]
 
-        # Output layers
-        sparse_pattern = self.out_layer(sparse_mat)
-        # sparse_pattern = sparse_vec.reshape(self.N, self.C, self.Hc, self.Wc)
-        return sparse_pattern
+        pattern_mat = self.final_layer(h_vec_out + w_vec_out)
 
-        # print('sparse_pattern:', sparse_pattern.shape)
-        # dense_pattern = nn.functional.interpolate(input=sparse_pattern, scale_factor=8, mode='bilinear',
-        #                                           align_corners=False)
+        return pattern_mat * 2 - 1
 
-        # print('dense_pattern:', dense_pattern.shape)
-        # return dense_pattern

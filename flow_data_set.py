@@ -2,15 +2,14 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 import csv
+import os
 from torch.utils.data import Dataset
 
 
-class CameraDataSet(Dataset):
+class FlowDataSet(Dataset):
     """My camera image dataset."""
 
-    def __init__(self, root_dir, list_name, down_k=3, disp_range=None, opts=None):
-        if disp_range is None:
-            disp_range = [1010, 1640]
+    def __init__(self, root_dir, list_name, down_k=3, jump_k=4, opts=None):
 
         self.opt = opts
         if opts is None:
@@ -21,21 +20,23 @@ class CameraDataSet(Dataset):
             self.opt['stride'] = 1
         if 'bias' not in self.opt.keys():
             self.opt['bias'] = 0
+        if 'disp_range' not in self.opt.keys():
+            self.opt['disp_range'] = (1010, 1640)
 
-        if opts is None:
-            opts = {'vol': False, 'disp_c': False, 'dense': False, 'stride': 1}
         self.root_dir = root_dir
 
-        self.image_frame = []
-        count = 0
-
         # Load csv
+        raw_list = []
         with open(root_dir + list_name + '.csv') as f:
             f_csv = csv.reader(f)
             for row in f_csv:
-                count += 1
-                if count % self.opt['stride'] == self.opt['bias']:
-                    self.image_frame.append(row)
+                raw_list.append(row)
+        self.image_frame = []
+        self.image_frame_dest = []
+        for i in range(0, len(raw_list)):
+            if i % self.opt['stride'] == self.opt['bias'] and i + jump_k < len(raw_list):
+                self.image_frame.append(raw_list[i])
+                self.image_frame_dest.append(raw_list[i + jump_k])
 
         # Load header
         self.header = np.load(root_dir + list_name + '.npy').item()
@@ -45,13 +46,12 @@ class CameraDataSet(Dataset):
         self.para_D = torch.from_numpy(np.load(root_dir + 'para_D.npy')).float()
         self.f_tvec_mul = 1185.92488
 
-        self.pattern = plt.imread(root_dir + 'pattern_part0.png')
+        # self.pattern = plt.imread(root_dir + 'pattern_part0.png')
         self.H = 1024
         self.W = 1280
         self.H_p = 128
         self.W_p = 1024
         self.K = down_k
-        self.disp_range = disp_range
         self.D = 64
         self.Hc = int(self.H / pow(2, self.K))
         self.Wc = int(self.W / pow(2, self.K))
@@ -59,16 +59,39 @@ class CameraDataSet(Dataset):
     def __len__(self):
         return len(self.image_frame)
 
-    def get_pattern(self):
-        return torch.from_numpy((self.pattern.transpose(2, 0, 1) - 0.5) * 2)
+    def save_item(self, item, name, idx):
+        full_name = self.get_path_by_name(name, idx)
+        # Check and create folder
+        folder_path = full_name[:full_name.rfind('/')]
+        if not os.path.exists(folder_path):
+            os.mkdir(folder_path)
+        # Write file according to suffix
+        suffix = full_name[full_name.rfind('.'):]
+        if suffix == '.png':
+            np_item = item.cpu().squeeze().numpy()
+            if item.shape[1] == 1:
+                plt.imsave(full_name, np_item, cmap='Greys_r')
+            elif item.shape[1] == 3:
+                plt.imsave(full_name, np.transpose(np_item, (1, 2, 0)))
+            else:
+                return False
+        elif suffix == '.npy':
+            np_item = item.cpu().squeeze().numpy()
+            np.save(full_name, np_item)
+        else:
+            return False
+        return True
 
     def get_opt(self):
         return self.opt
 
-    def get_path_by_name(self, name, idx):
+    def get_path_by_name(self, name, idx, next_table=False):
         assert name in self.header
         item_idx = self.header[name]
-        return ''.join((self.root_dir, self.image_frame[idx][0], self.image_frame[idx][item_idx]))
+        if next_table:
+            return ''.join((self.root_dir, self.image_frame_dest[idx][0], self.image_frame_dest[idx][item_idx]))
+        else:
+            return ''.join((self.root_dir, self.image_frame[idx][0], self.image_frame[idx][item_idx]))
 
     def __getitem__(self, idx):
         sample = {'idx': idx}
@@ -79,6 +102,11 @@ class CameraDataSet(Dataset):
             mask = plt.imread(mask_name)
             norm_mask = torch.from_numpy(mask).byte().unsqueeze(0)
             sample['mask_mat'] = norm_mask
+        if 'mask_mat_dest' in self.opt['header']:
+            mask_name = self.get_path_by_name(name='mask_mat', idx=idx, next_table=True)
+            mask = plt.imread(mask_name)
+            norm_mask = torch.from_numpy(mask).byte().unsqueeze(0)
+            sample['mask_mat_dest'] = norm_mask
 
         # Load cam_img
         if 'cam_img' in self.opt['header']:
@@ -88,21 +116,55 @@ class CameraDataSet(Dataset):
             norm_image = torch.from_numpy((image.transpose((2, 0, 1)) - 0.5) * 2)
             sample['cam_img'] = norm_image
 
-        # Load disp_set (Need norm_mask)
+        # Load disp_mat (Need norm_mask)
         if 'disp_mat' in self.opt['header']:
             disp_name = self.get_path_by_name(name='disp_mat', idx=idx)
             disp_np_mat = np.fromfile(disp_name, dtype='<f4').reshape(self.W, self.H).transpose(1, 0)
-            disp_np_mat = (disp_np_mat - self.disp_range[0]) / (self.disp_range[1] - self.disp_range[0])
+            disp_np_mat = (disp_np_mat - self.opt['disp_range'][0]) / (self.opt['disp_range'][1] - self.opt['disp_range'][0])
             disp_np_mat = np.nan_to_num(disp_np_mat)
             norm_disp_mat = torch.from_numpy(disp_np_mat).unsqueeze(0)
             norm_mask = sample['mask_mat']
             norm_disp_mat[norm_mask == 0] = 0
             sample['disp_mat'] = norm_disp_mat
 
+        # Load disp_mat_dest
+        if 'disp_mat_dest' in self.opt['header']:
+            disp_name = self.get_path_by_name(name='disp_mat', idx=idx, next_table=True)
+            disp_np_mat = np.fromfile(disp_name, dtype='<f4').reshape(self.W, self.H).transpose((1, 0))
+            disp_np_mat = (disp_np_mat - self.opt['disp_range'][0]) / (self.opt['disp_range'][1] - self.opt['disp_range'][0])
+            disp_np_mat = np.nan_to_num(disp_np_mat)
+            norm_disp_mat = torch.from_numpy(disp_np_mat).unsqueeze(0)
+            norm_mask = sample['mask_mat_dest']
+            norm_disp_mat[norm_mask == 0] = 0
+            sample['disp_mat_dest'] = norm_disp_mat
+
+        # Load cor_pro (Only next)
+        if 'cor_pro' in self.opt['header']:
+            cor_name = self.get_path_by_name(name='cor_pro', idx=idx, next_table=True)
+            cor_np_mat = np.fromfile(cor_name, dtype='<u2').reshape(2, self.W, self.H).transpose((0, 2, 1))
+            cor_np_mat = np.nan_to_num(cor_np_mat)
+            cor_pro_mat = torch.from_numpy(cor_np_mat)
+            sample['cor_pro'] = cor_pro_mat
+
+        # Load mask_flow
+        if 'mask_flow' in self.opt['header']:
+            mask_flow_name = self.get_path_by_name(name='mask_flow', idx=idx)
+            mask_flow = plt.imread(mask_flow_name)
+            norm_mask_flow = torch.from_numpy(mask_flow).byte().unsqueeze(0)
+            sample['mask_flow'] = norm_mask_flow
+
+        # Load flow_mat
+        if 'flow_mat' in self.opt['header']:
+            flow_name = self.get_path_by_name(name='flow_mat', idx=idx)
+            flow_np_mat = np.load(flow_name)  # .npy
+            flow_np_mat = np.nan_to_num(flow_np_mat)
+            flow_mat = torch.from_numpy(flow_np_mat).transpose((2, 0, 1))  # [2, H, W]
+            sample['flow_mat'] = flow_mat
+
         # Generate idx_vec (Need norm_disp)
         if 'idx_vec' in self.opt['header']:
             norm_disp_mat = sample['disp_mat']
-            disp_raw = norm_disp_mat * (self.disp_range[1] - self.disp_range[0]) + self.disp_range[0]
+            disp_raw = norm_disp_mat * (self.opt['disp_range'][1] - self.opt['disp_range'][0]) + self.opt['disp_range'][0]
             tmp_mat = (disp_raw * self.para_D[2] + self.para_M[2, :, :] * self.f_tvec_mul)
             x_pro_mat = (disp_raw * self.para_D[0] + self.para_M[0, :, :] * self.f_tvec_mul) / tmp_mat
             x_pro_mat = torch.remainder(torch.round(x_pro_mat), self.W_p).type(torch.LongTensor)
@@ -135,7 +197,7 @@ class CameraDataSet(Dataset):
             disp_c_name = self.get_path_by_name(name='disp_c', idx=idx)
             disp_c_np_mat = np.load(disp_c_name)  # In (0, 1], .npy
             # disp_c_np_mat = np.fromfile(disp_c_name, dtype='<f4').reshape(self.Wc, self.Hc).transpose(1, 0)
-            # disp_c_np_mat = (disp_c_np_mat - self.disp_range[0]) / (self.disp_range[1] - self.disp_range[0])
+            # disp_c_np_mat = (disp_c_np_mat - self.opt['disp_range'][0]) / (self.opt['disp_range'][1] - self.opt['disp_range'][0])
             disp_c_np_mat = np.nan_to_num(disp_c_np_mat)
             disp_c_mat = torch.from_numpy(disp_c_np_mat).unsqueeze(0)  # [1, Hc, Wc]
             # disp_c_mat[sample['mask_c'] == 0] = 0

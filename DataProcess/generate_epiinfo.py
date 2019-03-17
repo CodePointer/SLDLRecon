@@ -5,10 +5,10 @@ import numpy as np
 def main(out_m_file, out_d_file):
     cam_height = 1024
     cam_width = 1280
-    cam_mat = np.loadtxt('cam_mat.txt')
-    pro_mat = np.loadtxt('pro_mat.txt')
-    rot_mat = np.loadtxt('rot_mat.txt')
-    trans_vec = np.loadtxt('trans_vec.txt').reshape((3, 1))
+    cam_mat = np.loadtxt('sys_para/cam_mat.txt')
+    pro_mat = np.loadtxt('sys_para/pro_mat.txt')
+    rot_mat = np.loadtxt('sys_para/rot_mat.txt')
+    trans_vec = np.loadtxt('sys_para/trans_vec.txt').reshape((3, 1))
 
     pro_matrix = np.matmul(pro_mat, np.hstack((rot_mat, trans_vec)))
     f_x = cam_mat[0, 0]

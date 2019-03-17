@@ -14,14 +14,15 @@ from data_set import CameraDataSet
 def generate_shade_mat(root_path):
     # Step 1: Set data_loader
     f_tvec_mul = 1185.92488
-    alpha = 16 * 63
-    beta = 716
+    alpha = 10 * 63
+    beta = 1010
     H = 1024
     W = 1280
-    cam_mat = np.loadtxt('cam_mat.txt')
+    cam_mat = np.loadtxt('./sys_para/cam_mat.txt')
     batch_size = 1
     workers = 0
-    camera_dataset = CameraDataSet(root_path, 'DataNameList' + '3')
+    opt_header = ('mask_mat', 'disp_mat')
+    camera_dataset = CameraDataSet(root_path, 'TestDataList' + '3', opts=dict(header=opt_header))
     data_loader = DataLoader(camera_dataset, batch_size=batch_size, shuffle=False, num_workers=workers)
     print('Step 0: DataLoader size: %d.' % len(data_loader))
 
@@ -37,13 +38,22 @@ def generate_shade_mat(root_path):
 
     # Step 2: Process all data by looping
     report_period = 40
+    disp_min = 2.0
+    disp_max = -1.0
     for i, data in enumerate(data_loader, 0):
         # Get data:
         data_idx = data['idx']
         dense_mask = data['mask_mat']
         dense_disp = data['disp_mat']
-        dense_mask = dense_mask.cuda().float()
+        dense_mask = dense_mask.cuda()
         dense_disp = dense_disp.cuda()
+
+        # Set disp max & min
+        tmp_min = torch.min(dense_disp.masked_select(dense_mask)).item()
+        tmp_max = torch.max(dense_disp.masked_select(dense_mask)).item()
+        disp_min = tmp_min if tmp_min < disp_min else disp_min
+        disp_max = tmp_max if tmp_max > disp_max else disp_max
+        dense_mask = dense_mask.float()
 
         # Calculate depth
         disp_out = dense_disp.squeeze() * alpha + beta  # [H, W]
@@ -51,7 +61,7 @@ def generate_shade_mat(root_path):
         depth_mat[dense_mask.squeeze() == 0] = 0  # [H, W]
 
         # Blur
-        blurred = cv2.bilateralFilter(depth_mat.cpu().numpy(), 9, 41, 41)
+        blurred = cv2.GaussianBlur(depth_mat.cpu().numpy(), ksize=(9, 9), sigmaX=3.0)
         depth_mat = torch.from_numpy(blurred).cuda()
 
         # Calculate 2 cross vectors
@@ -86,13 +96,14 @@ def generate_shade_mat(root_path):
         else:
             print(train_num, end='', flush=True)
     print('Step 2: Finish iteration.')
+    print('[%.2f, %.2f]' % (disp_min, disp_max))
 
 
 def main(argv):
     # Input parameters
     assert len(argv) >= 1
 
-    generate_shade_mat(root_path='../SLDataSet/20181204/')
+    generate_shade_mat(root_path='../SLDataSet/20190209/')
 
 
 if __name__ == '__main__':

@@ -21,7 +21,7 @@ def load_pro_mat(root_path, x_file_name, y_file_name, mat_size, width_pro):
     return idx_pro_vector.cuda()
 
 
-def load_disp_volume(root_path, file_name, volume_size, batch_size):
+def load_disp_volume(volume_size, batch_size):
     # raw_input = torch.from_numpy(np.fromfile(root_path + file_name, dtype='<f4'))
     raw_input = torch.Tensor(list(range(64, 0, -1)))
     raw_input = raw_input.float() / 64.0
@@ -68,8 +68,7 @@ class SparseNet(nn.Module):
                                         y_file_name='y_pro_tensor_' + str(self.K) + '.bin',
                                         mat_size=[self.H, self.W, self.D],
                                         width_pro=self.Wp)
-        self.disp_mat = load_disp_volume(root_path=root_path, file_name='disp_range.bin',
-                                         volume_size=[self.H, self.W, self.D], batch_size=self.N)
+        self.disp_mat = load_disp_volume(volume_size=[self.H, self.W, self.D], batch_size=self.N)
 
         # Pad layers:
         self.rep_pad_2 = nn.ReplicationPad2d(2)

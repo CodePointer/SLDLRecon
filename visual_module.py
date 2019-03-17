@@ -131,26 +131,27 @@ def iter_visual_report(vis, win_set, input_set):
     vis.line(X=x_pos, Y=torch.FloatTensor([g_average]), win=win_set['g_loss'],
              update='append', name='train_report', opts=g_opts)
     vis.line(X=x_pos, Y=torch.FloatTensor([d_average]), win=win_set['d_loss'],
-             update='append', name='train_respot', opts=d_opts)
+             update='append', name='train_report', opts=d_opts)
 
     # Show pattern, pattern_boxplot
     pattern, sparse_pattern = input_set[2]
     vis.image((pattern / 2 + 0.5), win=win_set['pattern'])
-    pattern_c_base = sparse_pattern.reshape((sparse_pattern.shape[0],
-                                             sparse_pattern.shape[1] * sparse_pattern.shape[2])).transpose(1, 0)
-    box_opts = dict(showlegend=True, title='Pattern Boxplot', width=480, height=360, legend=['Pixel'])
-    vis.boxplot(X=pattern_c_base, opts=box_opts, win=win_set['pattern_box'])
+    # pattern_c_base = sparse_pattern.reshape((sparse_pattern.shape[0],
+    #                                          sparse_pattern.shape[1] * sparse_pattern.shape[2])).transpose(1, 0)
+    # box_opts = dict(showlegend=True, title='Pattern Boxplot', width=480, height=360, legend=['Pixel'])
+    # vis.boxplot(X=pattern_c_base, opts=box_opts, win=win_set['pattern_box'])
 
     # Show rendered image, disparity, prob
-    mask_c, image, disp_mat, volume_prob, disp_gt = input_set[3]
+    mask_c, grid_image, image, disp_mat, volume_prob, disp_gt = input_set[3]
     # image[mask_c == 0] = 0
     disp_mat[mask_c == 0] = 0
     disp_gt[mask_c == 0] = 0
-    show_disp_mat = torch.cat((disp_gt, disp_mat), dim=2)
+    show_disp_mat = torch.cat((disp_mat, disp_gt), dim=2)
     show_disp_mat = torch.nn.functional.interpolate(input=show_disp_mat, scale_factor=2.0, mode='nearest')
     # vis.images(show_disp_mat, nrow=4, padding=2, win=win_set['disp'])
-    show_img_set = torch.nn.functional.interpolate(input=image, scale_factor=0.25, mode='nearest')
-    show_mat = torch.cat((show_disp_mat, show_img_set / 2 + 0.5), dim=2)
+    show_img_mat = torch.cat((grid_image, image), dim=2)
+    show_img_set = torch.nn.functional.interpolate(input=show_img_mat, scale_factor=0.25, mode='nearest')
+    show_mat = torch.cat((show_img_set / 2 + 0.5, show_disp_mat), dim=2)
     vis.images(show_mat, nrow=4, padding=2, win=win_set['image'])
 
     # Draw function plot
@@ -165,7 +166,7 @@ def iter_visual_report(vis, win_set, input_set):
     #     vis.line(Y=res_vec, X=disp_range, opts=plot_opt, win=win_set['disp'] + str(idx))
 
     # Generate report info
-    report_message = '[%d, %4d/%d]: %.2e, %.2e' % (epoch + 1, i + 1, length, g_average, d_average)
+    report_message = '[%d, %4d/%d]: %.2e, %.2e' % (epoch, i + 1, length, g_average, d_average)
     return report_message
 
 
@@ -190,7 +191,7 @@ def iter_visual_epoch(vis, win_set, input_set):
     vis.line(X=x_pos, Y=torch.FloatTensor([d_average]), win=win_set['d_loss'],
              update='append', name='train_epoch', opts=d_opts)
     # Generate report info
-    report_message = '    Epoch Train[%d]: %.2e, %.2e' % (epoch + 1, g_average, d_average)
+    report_message = '    Epoch Train[%d]: %.2e, %.2e' % (epoch, g_average, d_average)
     return report_message
 
 
@@ -214,6 +215,17 @@ def iter_visual_test(vis, win_set, input_set):
              update='append', name='test_epoch', opts=g_opts)
     vis.line(X=x_pos, Y=torch.FloatTensor([d_average]), win=win_set['d_loss'],
              update='append', name='test_epoch', opts=d_opts)
+    mask_c, grid_image, image, disp_mat, disp_gt = input_set[2]
+    disp_mat[mask_c == 0] = 0
+    disp_gt[mask_c == 0] = 0
+    show_disp_mat = torch.cat((disp_mat, disp_gt), dim=2)
+    show_disp_mat = torch.nn.functional.interpolate(input=show_disp_mat, scale_factor=2.0, mode='nearest')
+    # vis.images(show_disp_mat, nrow=4, padding=2, win=win_set['disp'])
+    show_img_mat = torch.cat((grid_image, image), dim=2)
+    show_img_set = torch.nn.functional.interpolate(input=show_img_mat, scale_factor=0.25, mode='nearest')
+    show_mat = torch.cat((show_img_set / 2 + 0.5, show_disp_mat), dim=2)
+    vis.images(show_mat, nrow=4, padding=2, win=win_set['test_set'])
+
     # Generate report info
-    report_message = '    Epoch Test[%d]: %.2e, %.2e' % (epoch + 1, g_average, d_average)
+    report_message = '    Epoch Test[%d]: %.2e, %.2e' % (epoch, g_average, d_average)
     return report_message
