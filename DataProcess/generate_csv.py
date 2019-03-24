@@ -5,7 +5,7 @@ import numpy as np
 
 def main(out_file, k):
     total_list = []
-    data_sets = [('DataSetW' + str(i), 1000) for i in range(1, 9, 1)]
+    data_sets = [('DataSetW' + str(i), 1000) for i in range(2, 10, 2)]
     data_types = [('cam_img', 'cam_img', '.png'),
                   ('disp_mat', 'disp_mat', '.bin'),
                   ('disp_cam', 'disp_cam', '.npy'),

@@ -63,11 +63,11 @@ def my_imshow(image):
 def generate_flow_gt(jump_k, stride):
     # Step 1: Set data_loader
     batch_size = 1
-    workers = 4
+    workers = 0
     root_path = '../SLDataSet/20190209/'
     para = Parameters(root_dir=root_path)
     opt_header = ('mask_mat', 'disp_mat')  # out: mask_flow, flow_mat
-    camera_dataset = FlowDataSet(root_path, 'TotalDataList3', down_k=3, jump_k=jump_k,
+    camera_dataset = FlowDataSet(root_path, 'TotalDataList3', jump_k=jump_k,
                                  opts=dict(header=opt_header, disp_range=para.disp_range))
     data_loader = DataLoader(camera_dataset, batch_size=batch_size, shuffle=False, num_workers=workers)
     print('Step 0: DataLoader size: %d.' % len(data_loader))
@@ -102,10 +102,14 @@ def generate_flow_gt(jump_k, stride):
         # max_wp, min_wp = 0, para.Wp
         for h in range(0, para.H):
             for w in range(0, para.W):
+                # if h == 700 and w == 600:
+                #     print('(700, 600):')
                 if not mask_mat[0, 0, h, w]:
                     continue
                 hp = int(y_pro_mat[0, 0, h, w])
                 wp = int(x_pro_mat[0, 0, h, w])
+                # if h == 700 and w == 600:
+                #     print('(hp, wp):', hp, wp)
                 # max_hp, min_hp = max(hp, max_hp), min(hp, min_hp)
                 # max_wp, min_wp = max(wp, max_wp), min(wp, min_wp)
                 if not (0 <= hp < para.Hp and 0 <= wp < para.Wp):
@@ -136,6 +140,12 @@ def generate_flow_gt(jump_k, stride):
         # Show filled pro_mat
         # my_imshow(disp_cam.squeeze())
         # my_imshow(cor_yc.squeeze())
+
+        # h, w = 700, 600
+        # print('x_pro_mat:', x_pro_mat[0, 0, h, w])
+        # print('y_pro_mat:', y_pro_mat[0, 0, h, w])
+
+        # return
 
         # Save part:
         assert camera_dataset.save_item(item=disp_cam.cpu(), name='disp_cam', idx=data_idx)
