@@ -5,7 +5,7 @@ import torch
 import numpy as np
 import os
 import visdom
-import Module.visual_module as vm
+import History.visual_module as vm
 from Module.depth_net import DepthNet
 from Module.rigid_net import RigidNet
 from Module.flow_estimator import FlowEstimator

@@ -1,35 +1,49 @@
+# -*- coding: utf-8 -*-
+
+"""
+This Module is used for generate csv file for dataset.
+    Dataset: Thing10K
+    Type: model with 100 depth image set. Temporal series.
+        Has been processed with 'coord_generator'.
+"""
+
 import csv
 import sys
 import numpy as np
 
 
-def main(out_file, k):
-    total_list = []
-    data_sets = [('DataSetW' + str(i), 1000) for i in range(2, 10, 2)]
-    data_types = [('cam_img', 'cam_img', '.png'),
-                  ('disp_mat', 'disp_mat', '.bin'),
-                  ('disp_cam', 'disp_cam', '.npy'),
-                  ('mask_mat', 'mask_mat', '.png'),
-                  ('mask_cam', 'mask_cam', '.png'),
-                  ('cor_xc', 'cor_xc', '.npy'),
-                  ('cor_yc', 'cor_yc', '.npy'),
-                  ('mask_pro', 'mask_pro', '.png'),
-                  ('shade_mat', 'shade_mat', '.png'),
-                  ('disp_c' + str(k), 'disp_c', '.npy'),
-                  ('disp_v' + str(k), 'disp_v', '.bin'),
-                  ('mask_c' + str(k), 'mask_c', '.png'),
-                  ('disp_out' + str(k), 'disp_out', '.npy'),
-                  ('est_img' + str(k), 'est_img', '.png')]
+def main(out_file):
 
-    for data_set in data_sets:
-        set_num = data_set[1]
-        for idx in range(0, set_num):
-            tmp_list = list()
-            tmp_list.append(data_set[0] + '/')
-            for data_type in data_types:
-                file_name = ''.join((data_type[0], '/', data_type[1], str(idx), data_type[2]))
-                tmp_list.append(file_name)
-            total_list.append(tmp_list)
+    # Some parameters:
+    main_path = 'E:/SLDataSet/Thing10K/flow_dataset'
+    model_num = 50      # Start from 1
+    frame_num = 100     # Start from 0
+
+    prefix_set = []
+    for m_idx in range(1, model_num + 1):
+        for f_idx in range(0, frame_num):
+            prefix_set.append('m%02df%03d' % (m_idx, f_idx))
+    data_types = [('depth_cam', '.npy'),
+                  ('depth_pro1', '.npy'),
+                  ('depth_pro2', '.npy'),
+                  ('mask_cam', '.png'),
+                  ('mask_pro1', '.png'),
+                  ('mask_pro2', '.png'),
+                  ('flow1_cv', '.npy'),
+                  ('flow2_cv', '.npy'),
+                  ('mask_flow1', '.png'),
+                  ('mask_flow2', '.png'),
+                  ('xy_pro1_cv', '.npy'),
+                  ('xy_pro2_cv', '.npy'),
+                  ('xy_cam_p1v', '.npy'),
+                  ('xy_cam_p2v', '.npy')]
+
+    total_list = []
+    for prefix in prefix_set:
+        line = [main_path + '/', prefix + '_']
+        for data_type in data_types:
+            line.append(data_type[0] + data_type[1])
+        total_list.append(line)
 
     with open(out_file + '.csv', 'w', newline='') as csv_file:
         writer = csv.writer(csv_file)
@@ -37,7 +51,7 @@ def main(out_file, k):
 
     header_dict = {}
     for i in range(0, len(data_types)):
-        header_dict[data_types[i][1]] = i + 1
+        header_dict[data_types[i][0]] = i + 2
     np.save(out_file + '.npy', header_dict)
     print(header_dict)
 
@@ -45,13 +59,10 @@ def main(out_file, k):
 
 
 if __name__ == '__main__':
-    assert len(sys.argv) >= 2
-
-    down_k = int(sys.argv[1])
+    assert len(sys.argv) >= 1
 
     csv_name = 'DataNameList'
-    if len(sys.argv) >= 3:
-        csv_name = sys.argv[2]
-    csv_name += str(down_k)
+    if len(sys.argv) >= 2:
+        csv_name = str(sys.argv[1])
 
-    main(out_file=csv_name, k=down_k)
+    main(out_file=csv_name)

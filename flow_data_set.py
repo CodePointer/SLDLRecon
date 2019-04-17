@@ -8,7 +8,10 @@ import collections
 
 
 class SampleSet(collections.MutableMapping):
-    """A dictionary sample"""
+    """A dictionary sample
+
+    """
+
     def __init__(self, *args, **kwargs):
         self.store = dict()
         self.update(dict(*args, **kwargs))
@@ -43,7 +46,7 @@ class SampleSet(collections.MutableMapping):
 class FlowDataSet(Dataset):
     """My camera image dataset."""
 
-    def __init__(self, root_dir, list_name, batch_size=4, jump_k=4, opts=None):
+    def __init__(self, root_dir, list_name, batch_size=4, jump_k=1, opts=None):
 
         self.opt = opts
         if opts is None:
@@ -61,6 +64,9 @@ class FlowDataSet(Dataset):
         # self.alpha = self.opt['disp_range'][1] - self.opt['disp_range'][0]
         # self.beta = self.opt['disp_range'][0]
 
+        # Load header
+        self.header = np.load(root_dir + list_name + '.npy').item()
+
         # Load csv
         raw_list = []
         with open(root_dir + list_name + '.csv') as f:
@@ -74,19 +80,16 @@ class FlowDataSet(Dataset):
                 self.image_frame.append(raw_list[i])
                 self.image_frame_dest.append(raw_list[i + jump_k])
 
-        # Load header
-        self.header = np.load(root_dir + list_name + '.npy').item()
-
-        # Load para_M, para_D
-        self.para_M = torch.from_numpy(np.load(root_dir + 'para_M.npy')).float()
-        self.para_D = torch.from_numpy(np.load(root_dir + 'para_D.npy')).float()
-        self.f_tvec_mul = 1185.92488
+        # # Load para_M, para_D
+        # self.para_M = torch.from_numpy(np.load(root_dir + 'para_M.npy')).float()
+        # self.para_D = torch.from_numpy(np.load(root_dir + 'para_D.npy')).float()
+        # self.f_tvec_mul = 1185.92488
 
         # self.pattern = plt.imread(root_dir + 'pattern_part0.png')
         self.H = 1024
         self.W = 1280
-        self.H_p = 128
-        self.W_p = 1024
+        self.H_p = 1024
+        self.W_p = 1280
         self.N = batch_size
         # self.D = 64
         # self.Hc = int(self.H / pow(2, self.K))
