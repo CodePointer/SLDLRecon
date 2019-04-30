@@ -18,13 +18,12 @@ import sys
 
 sys.path.append('../')
 
-from flow_data_set import FlowDataSet
+from History.flow_data_set import FlowDataSet
 import torch
 from torch.utils.data import DataLoader
 import torch.nn.functional as func
 import numpy as np
 from matplotlib import pyplot as plt
-import visdom
 
 
 class Parameters:

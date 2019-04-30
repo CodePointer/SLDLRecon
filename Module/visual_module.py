@@ -53,6 +53,21 @@ def show_report(vis, win_set, input_set):
     vis.images(show_depth_mat, nrow=2, padding=2, win=win_set['depth'])
 
 
+def epoch_report(vis, win_set, input_set):
+    """Draw epoch loss in another window.
+
+    :param vis: visdom environment.
+    :param win_set: {'epoch_loss'}
+    :param input_set: ((epoch, epoch_loss))
+    :return: None
+    """
+    epoch, epoch_loss = input_set[0]
+    epoch_opts = dict(showlegent=True, title='Predictor Epoch', width=480, height=360)
+    vis.line(X=torch.FloatTensor([epoch]), Y=torch.FloatTensor([epoch_loss]), win=win_set['epoch_loss'],
+             update='append', name='epoch', opts=epoch_opts)
+    return
+
+
 def test_report(vis, win_set, input_set):
     """
     Draw visual elements for train_iter.py, test version

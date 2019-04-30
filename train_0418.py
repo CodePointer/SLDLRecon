@@ -113,6 +113,7 @@ def spatial_train():
     Tensor = torch.cuda.FloatTensor if cuda else torch.FloatTensor
     report_period = config.getint('Paras', 'report_period')
     save_period = config.getint('Paras', 'save_period')
+    iter_times = 0
     for epoch in range(config.getint('Paras', 'start_epoch'), config.getint('Paras', 'total_epoch')):
         # ................. #
         # 2.1 Train part    #
@@ -141,11 +142,12 @@ def spatial_train():
             optimizer_g.step()
             g_loss_running += g_loss.item()
             g_loss_epoch += g_loss.item()
+            iter_times += 1
 
             # Report: draw depth map and loss line.
             now_lr = optimizer_g.param_groups[0]['lr']
             report_info = vm.iter_report(vis=vis, win_set=config['WinSet'], input_set=(
-                (i, g_loss_running, now_lr),))
+                (iter_times, g_loss_running, now_lr),))
             g_loss_running = 0
             print(report_info)
 
@@ -157,6 +159,8 @@ def spatial_train():
 
         # 2.2 Epoch visualization:
         print('Epoch[%d] finished.' % epoch)
+        epoch_loss = g_loss_epoch / len(train_loader)
+        vm.epoch_report(vis, config['WinSet'], input_set=((epoch, epoch_loss),))
 
         # Check Parameter nan number
         check_nan(depth_net, save_path=config.get('FilePath', 'depth_model') + '_error.pt')

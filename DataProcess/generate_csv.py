@@ -15,12 +15,13 @@ import numpy as np
 def main(out_file):
 
     # Some parameters:
-    main_path = 'E:/SLDataSet/Thing10K/flow_dataset'
+    main_path = 'E:/SLDataSet/Thing10K/flow_test_dataset'
     model_num = 50      # Start from 1
     frame_num = 100     # Start from 0
 
     prefix_set = []
-    for m_idx in range(1, model_num + 1):
+    # for m_idx in range(11, model_num + 1):
+    for m_idx in range(1, 3):
         for f_idx in range(0, frame_num):
             prefix_set.append('m%02df%03d' % (m_idx, f_idx))
     data_types = [('depth_cam', '.npy'),

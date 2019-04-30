@@ -116,9 +116,9 @@ def save_from_torch(mat, name, suffix, out_path, prefix):
 def main():
 
     # Some parameters (You should edit here every time):
-    main_path = 'E:/SLDataSet/Thing10K/my_dataset'
-    out_path = 'E:/SLDataSet/Thing10K/flow_dataset'
-    model_num = 50
+    main_path = 'E:/SLDataSet/Thing10K/test_dataset'
+    out_path = 'E:/SLDataSet/Thing10K/flow_test_dataset'
+    model_num = 2
     frame_num = 100
     jump = 1
     image_shape = (1024, 1280)
@@ -131,7 +131,7 @@ def main():
     y_cam_grid = torch.arange(0, image_shape[0]).reshape(-1, 1).repeat(1, image_shape[1])
     xy_cam_grid = torch.stack((x_cam_grid, y_cam_grid), dim=0).reshape(1, 2, image_shape[0], image_shape[1]).float()
     xy_cam_grid = xy_cam_grid.cuda()
-    for m_idx in range(1, model_num + 1):
+    for m_idx in range(0, model_num + 1):
         # Step 1: Load all information needed.
         depth_cam = []
         mask_cam = []

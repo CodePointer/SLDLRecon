@@ -1,14 +1,12 @@
 import sys
-from data_set import CameraDataSet
+from History.data_set import CameraDataSet
 from torch.utils.data import DataLoader
-from dense_net import DenseNet
+from History.dense_net import DenseNet
 import torch
-import torchvision
 import math
 import numpy as np
-import os
 import visdom
-import visual_module as vm
+from History import visual_module_old as vm
 
 
 def lr_change(epoch):

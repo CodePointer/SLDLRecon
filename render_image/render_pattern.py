@@ -1,6 +1,6 @@
 import sys
 import configparser
-from data_set import CameraDataSet
+from History.data_set import CameraDataSet
 from torch.utils.data import DataLoader
 import torch
 import numpy as np

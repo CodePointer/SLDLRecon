@@ -1,12 +1,11 @@
 import sys
-from data_set import CameraDataSet
+from History.data_set import CameraDataSet
 from torch.utils.data import DataLoader
 from sparse_net import SparseNet
 import torch
 import math
 import numpy as np
 from matplotlib import pyplot as plt
-import os
 import visdom
 
 

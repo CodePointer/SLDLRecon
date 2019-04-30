@@ -66,8 +66,8 @@ def main():
 
     # Some parameters (You should edit here every time):
     main_path = 'E:/SLDataSet/Thing10K'
-    folder_name = 'my_dataset'
-    model_num = 50
+    folder_name = 'test_dataset'
+    model_num = 2
     frame_num = 100
     image_shape = (1024, 1280)
     cam_intrinsic = np.array([[2000, 0, 640], [0, 2000, 512], [0, 0, 1]])
@@ -79,7 +79,7 @@ def main():
     depth_pro1_names = []
     depth_pro2_names = []
     idx_set = []
-    for m_idx in range(1, model_num + 1):
+    for m_idx in range(0, model_num + 1):
         for f_idx in range(0, frame_num):
             depth_cam_names.append('%s/%d/depth_cam/depth_view%d.bin' % (main_path, m_idx, f_idx))
             depth_pro1_names.append('%s/%d/depth_pro1/depth_view%d.bin' % (main_path, m_idx, f_idx))
@@ -143,12 +143,12 @@ def main():
 
         # Save
         prefix = 'm%02df%03d' % (idx_set[idx][0], idx_set[idx][1])
-        np.save('%s/%s_depth_cam.npy' % (file_path, prefix), depth_cam.astype(float))
+        np.save('%s/%s_depth_cam.npy' % (file_path, prefix), depth_cam.astype(np.float32))
         plt.imsave('%s/%s_mask_cam.png' % (file_path, prefix), mask_cam, cmap='Greys_r')
-        np.save('%s/%s_depth_pro1.npy' % (file_path, prefix), depth_pro1.astype(float))
+        np.save('%s/%s_depth_pro1.npy' % (file_path, prefix), depth_pro1.astype(np.float32))
         plt.imsave('%s/%s_mask_pro1.png' % (file_path, prefix), mask_pro1, cmap='Greys_r')
-        np.save('%s/%s_xy_pro1_cv.npy' % (file_path, prefix), xy_pro1_cv.astype(float))
-        np.save('%s/%s_xy_cam_p1v.npy' % (file_path, prefix), xy_cam_p1v.astype(float))
+        np.save('%s/%s_xy_pro1_cv.npy' % (file_path, prefix), xy_pro1_cv.astype(np.float32))
+        np.save('%s/%s_xy_cam_p1v.npy' % (file_path, prefix), xy_cam_p1v.astype(np.float32))
         print('%s/%s writing finished.' % (file_path, prefix))
 
     return
