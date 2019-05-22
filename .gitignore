@@ -1,6 +1,7 @@
 SLDataSet/*
 data/*
 venv/*
+result/*
 .idea/*
 __pycache__/*
 Module/__pycache__/*
@@ -12,3 +13,4 @@ test_1pic_1210/*
 *.npy
 *.png
 *.csv
+

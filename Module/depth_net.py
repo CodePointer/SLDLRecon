@@ -53,7 +53,7 @@ class DepthNet(nn.Module):
         super(DepthNet, self).__init__()
 
         if alpha_range is None:
-            alpha_range = (0.0, 3.14)
+            alpha_range = (0.0, 1.0)
         self.b = alpha_range[0]
         self.a = alpha_range[1] - alpha_range[0]
 

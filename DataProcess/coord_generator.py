@@ -113,8 +113,8 @@ def norm_from_depth(depth_mat, mask_mat, pix_per_meter):
 
 def coord_visualization(xy_mat, range_shape):
     show_mat = np.ones(xy_mat.shape[:2] + tuple([3]))
-    show_mat[:, :, 0] = 1.0 - xy_mat[:, :, 0] / range_shape[0]
-    show_mat[:, :, 1] = 1.0 - xy_mat[:, :, 1] / range_shape[1]
+    show_mat[:, :, 0] = 1.0 - xy_mat[:, :, 0] / range_shape[1]
+    show_mat[:, :, 1] = 1.0 - xy_mat[:, :, 1] / range_shape[0]
     return show_mat.astype(np.float32)
 
 

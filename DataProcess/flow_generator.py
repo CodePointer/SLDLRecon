@@ -150,7 +150,7 @@ def main():
     flow_thred = 8.0
     pattern_pix_size = 4
     # Noise parameters
-    p_noise_rad = 0.2
+    p_noise_rad = 0.1
     i_noise_rad = 0.2
     gker_rad = 4
     kernlen = gker_rad * 2 + 1
@@ -166,7 +166,7 @@ def main():
     xy_cam_grid = xy_cam_grid.cuda()
     pattern = load_as_torch('pattern0', '.png', pattern_path, '%dpix' % pattern_pix_size, dtype=np.float32)
     # pattern = pattern / 255.0
-    for m_idx in range(1, model_num + 1):
+    for m_idx in range(20, model_num + 1):
         # Step 1: Load all information needed.
         print("Loading No.%02d model..." % m_idx, end='', flush=True)
         depth_cam = []
@@ -231,10 +231,10 @@ def main():
             flow_j[mask_flow.repeat(1, 2, 1, 1) == 0] = 0
 
             # Save (as i frame)
-            # save_from_torch(depth_cam[i].float(), 'depth_cam', '.npy', out_path, prefix)
-            # save_from_torch(mask_cam[i], 'mask_cam', '.png', out_path, prefix)
-            # save_from_torch(flow_j.float(), 'flow1_cv', '.npy', out_path, prefix)
-            # save_from_torch(mask_flow.float(), 'mask_flow1', '.png', out_path, prefix)
+            save_from_torch(depth_cam[i].float(), 'depth_cam', '.npy', out_path, prefix)
+            save_from_torch(mask_cam[i], 'mask_cam', '.png', out_path, prefix)
+            save_from_torch(flow_j.float(), 'flow1_cv', '.npy', out_path, prefix)
+            save_from_torch(mask_flow.float(), 'mask_flow1', '.png', out_path, prefix)
             save_from_torch(img_cam, 'img_cam_1', '.png', out_path, prefix)
             img_cam_list.append(img_cam)
 

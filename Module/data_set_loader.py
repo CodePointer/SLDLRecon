@@ -54,10 +54,10 @@ class FlowDataSet(Dataset):
         _mask_cam.png       [H, W], byte
         _flow1_cv.npy        [H, W, 2], float
         _mask_flow1.png      [H, W], byte
-
+        _flow1_cv_est.npy   [H, W, 2], float
     """
 
-    def __init__(self, root_dir, list_name, batch_size=4, opts=None):
+    def __init__(self, root_dir, header_name, list_name, batch_size=4, opts=None):
 
         self.opt = opts
         if opts is None:
@@ -68,15 +68,15 @@ class FlowDataSet(Dataset):
             self.opt['stride'] = 2
         if 'bias' not in self.opt.keys():
             self.opt['bias'] = 0
-        # if 'disp_range' not in self.opt.keys():
-        #     self.opt['disp_range'] = (1010, 1640)
+        if 'depth_range' not in self.opt.keys():
+            self.opt['depth_range'] = (0.0, 1.0)
 
         self.root_dir = root_dir
+        self.header = np.load(root_dir + header_name, allow_pickle=True).item()
 
-        # Load header and data.csv
+        # Load data.csv
         raw_list = []
-        self.header = np.load(root_dir + list_name + '.npy').item()
-        with open(root_dir + list_name + '.csv') as f:
+        with open(root_dir + list_name) as f:
             f_csv = csv.reader(f)
             for row in f_csv:
                 raw_list.append(row)
@@ -85,10 +85,10 @@ class FlowDataSet(Dataset):
             if i % self.opt['stride'] == self.opt['bias']:
                 self.image_frame.append(raw_list[i])
 
-        self.H = 1024
-        self.W = 1280
-        self.H_p = 1024
-        self.W_p = 1280
+        # self.H = 1024
+        # self.W = 1280
+        # self.H_p = 1024
+        # self.W_p = 1280
         self.N = batch_size
 
     def __len__(self):
@@ -143,10 +143,10 @@ class FlowDataSet(Dataset):
     def get_opt(self):
         return self.opt
 
-    def get_path_by_name(self, name, idx, next_table=False):
+    def get_path_by_name(self, name, idx):
         assert name in self.header
         item_idx = self.header[name]
-        return ''.join((self.image_frame[idx][0], self.image_frame[idx][1], self.image_frame[idx][item_idx]))
+        return ''.join((self.root_dir, self.image_frame[idx][0], self.image_frame[idx][item_idx]))
 
     def __getitem__(self, idx):
         sample = SampleSet()
@@ -161,11 +161,23 @@ class FlowDataSet(Dataset):
             assert self.load_item(sample, 'flow1_cv', idx)
         if 'mask_flow1' in self.opt['header']:
             assert self.load_item(sample, 'mask_flow1', idx)
+        if 'flow1_cv_est' in self.opt['header']:
+            assert self.load_item(sample, 'flow1_cv_est', idx)
+            tmp_mat = torch.nn.functional.interpolate(input=sample['flow1_cv_est'].unsqueeze(0), scale_factor=4.0,
+                                                      mode='bilinear', align_corners=True)
+            sample['flow1_cv_est'] = tmp_mat[0]
+
+        # Apply normalization
+        if 'depth_cam' in sample:
+            sample['depth_cam'] = (sample['depth_cam'] - self.opt['depth_range'][0]) \
+                                  / (self.opt['depth_range'][1] - self.opt['depth_range'][0])
 
         # Apply mask
         if 'mask_cam' in sample and 'depth_cam' in sample:
             sample['depth_cam'][sample['mask_cam'] == 0] = 0
         if 'mask_flow1' in sample and 'flow1_cv' in sample:
             sample['flow1_cv'][sample['mask_flow1'].repeat(2, 1, 1) == 0] = 0
+        if 'mask_flow1' in sample and 'flow1_cv_est' in sample:
+            sample['flow1_cv_est'][sample['mask_flow1'].repeat(2, 1, 1) == 0] = 0
 
         return sample
