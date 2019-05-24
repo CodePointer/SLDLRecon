@@ -191,6 +191,7 @@ def main():
     for i in range(config.getint('Paras', 'writer_num')):
         image_writers.append(SummaryWriter(config.get('FilePath', 'save_path') + 'test' + str(i)))
     print('Finished.')
+    print('  --cuda status:', cuda)
     print('  --train data load: %d' % len(train_loader))
     print('  --test  data load: %d' % len(test_loader))
     print('  --All info will be saved at', config.get('FilePath', 'save_path'))
@@ -204,7 +205,7 @@ def main():
         flag_set[0] = True
         depth_net.load_state_dict(torch.load(config.get('FilePath', 'predictor_name') + '.pt'), strict=False)
         depth_net.train()
-        assert check_nan(depth_net)
+        check_nan(depth_net)
     depth_net = depth_net.cuda() if cuda else depth_net
     print('Finished.')
     print('  --Model path: ', config.get('FilePath', 'predictor_name') + '.pt')

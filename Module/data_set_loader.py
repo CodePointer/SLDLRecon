@@ -169,8 +169,9 @@ class FlowDataSet(Dataset):
 
         # Apply normalization
         if 'depth_cam' in sample:
-            sample['depth_cam'] = (sample['depth_cam'] - self.opt['depth_range'][0]) \
-                                  / (self.opt['depth_range'][1] - self.opt['depth_range'][0])
+            alpha = self.opt['depth_range'][1] - self.opt['depth_range'][0]
+            beta = self.opt['depth_range'][0]
+            sample['depth_cam'] = (sample['depth_cam'] - beta) / alpha
 
         # Apply mask
         if 'mask_cam' in sample and 'depth_cam' in sample:

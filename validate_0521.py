@@ -78,7 +78,7 @@ def evaluate(test_loader, model, loss_fun):
         :param loss_fun:    The loss function for loss calculation.
 
     Return:
-        :return: test loss result. Average.
+        :return: None.
 
     Raise:
         None
@@ -95,18 +95,13 @@ def evaluate(test_loader, model, loss_fun):
         # Get data
         data = SampleSet(data)
         data.to_cuda() if cuda else data.to_cpu()
-        depth_cam = data['depth_cam']
-        mask_cam = data['mask_cam']
         flow1_cv = data['flow1_cv_est']
-        mask_flow1 = data['mask_flow1']
 
         # Compute output
         depth_est = model(flow1_cv)
-        loss = loss_fun(depth_est.masked_select(mask_flow1), depth_cam.masked_select(mask_flow1))
-        losses.update(loss, depth_cam.size(0))
 
         # Write result
-        depth_est[mask_cam == 0] = 0
+        # depth_est[mask_cam == 0] = 0
         for n in range(depth_est.size(0)):
             depth_est_np = depth_est[n].cpu().squeeze().numpy()
             idx = data['idx'][n].item()
