@@ -23,164 +23,80 @@ Main work:
             (https://pytorch.org/docs/stable/nn.html?highlight=grid_sample#torch.nn.functional.grid_sample)
 """
 
-import csv
+import configparser
 import sys
 import os
 import cv2
 from matplotlib import pyplot as plt
 import numpy as np
+import DataProcess.util as dp
+# from .util import load_bin_file, norm_from_depth, coord_visualization, process_epi_info, shade_from_norm, depth2xy
 
 
-def load_bin_file(file_name, shape):
-    """load binary file from disk and convert them into torch tensor/numpy array.
+def main(main_path, data_set):
 
-    The binary file is generated from OpenGL program outside. As the OpenGL is row-major, we don't need to do anything
-    about the shape, just use reshape directly. However if the mat is generated from matlab, a permute() method is
-    needed.
-    Also, the OpenGL program is running on the windows platform. The out put variables are float with little endian.
-    Output of this method is torch tensor.
+    main_path = main_path if main_path[-1] == '/' else main_path + '/'
 
-    Args:
-        :param file_name: '.bin' file name. Will be load directly.
-        :param shape: The shape of image. Needed for binary file. Dimention is 2.
-
-    Returns:
-        :return: A torch tensor with given shape.
-
-    Raises:
-        IOError: Error occurred if cannot load file.
-    """
-    try:
-        item_vec = np.fromfile(file_name, dtype='<f4')
-    except IOError as error:
-        print("File_name is %s" % file_name)
-        raise error
-
-    # item = torch.from_numpy(item_vec.reshape(shape[0], shape[1]))
-    item = item_vec.reshape(shape[0], shape[1])
-    # item = item.unsqueeze(0)
-    # item[torch.isnan(item)] = 0
-    return item
-
-
-def norm_from_depth(depth_mat, mask_mat, pix_per_meter):
-    """Calculate norm map from given depth map.
-
-    Use (-dz/dx, -dz/dy, 1). Use (x,y) (x+1, y), (x+1, y+1), (x, y+1).
-
-    Args:
-        :param depth_mat: view point from depth_mat
-        :param mask_mat: mask mat of depth_mat
-
-    Returns:
-        :return: norm_mat, mask_norm
-
-    Raises:
-        None.
-    """
-
-    # Calculate mask_norm
-    mask_xy = mask_mat
-    mask_x1y = np.zeros(mask_mat.shape, mask_mat.dtype)
-    mask_x1y[1:, :] = mask_xy[:-1, :]
-    mask_xy1 = np.zeros(mask_mat.shape, mask_mat.dtype)
-    mask_xy1[:, 1:] = mask_xy[:, :-1]
-    mask_norm = np.logical_and(mask_xy, mask_x1y)
-    mask_norm = np.logical_and(mask_xy1, mask_norm)
-    # mask_norm[mask_norm < 3] = 0
-    # mask_norm[mask_norm > 0] = 1
-
-    # Calculate depth_derv_x/y
-    # Apply gaussian filter to depth map
-    depth_xy = cv2.GaussianBlur(depth_mat, (9, 9), 3.0)
-    depth_x1y = np.zeros(depth_xy.shape, depth_xy.dtype)
-    depth_x1y[1:, :] = depth_xy[:-1, :]
-    depth_xy1 = np.zeros(depth_xy.shape, depth_xy.dtype)
-    depth_xy1[:, 1:] = depth_xy[:, :-1]
-    depth_derv_x = depth_x1y - depth_xy
-    depth_derv_y = depth_xy1 - depth_xy
-
-    # Calculate norm_mat
-    norm_mat = np.ones([depth_xy.shape[0], depth_xy.shape[1], 3], np.float32)
-    norm_mat[:, :, 0] = -depth_derv_x * pix_per_meter
-    norm_mat[:, :, 1] = -depth_derv_y * pix_per_meter
-    mod_mat = np.sqrt(np.sum(norm_mat*norm_mat, 2))
-    norm_mat = norm_mat / mod_mat.reshape(norm_mat.shape[0], norm_mat.shape[1], 1)
-    norm_mat[mask_norm == 0] = 0
-
-    return norm_mat, mask_norm
-
-
-def coord_visualization(xy_mat, range_shape):
-    show_mat = np.ones(xy_mat.shape[:2] + tuple([3]))
-    show_mat[:, :, 0] = 1.0 - xy_mat[:, :, 0] / range_shape[1]
-    show_mat[:, :, 1] = 1.0 - xy_mat[:, :, 1] / range_shape[0]
-    return show_mat.astype(np.float32)
-
-
-def main():
+    # Load config
+    cfg = configparser.ConfigParser(interpolation=configparser.ExtendedInterpolation())
+    cfg.read(main_path + '000config.ini')
 
     # Some parameters (You should edit here every time):
-    main_path = '/media/qiao/数据文档/SLDataSet/Thing10K/1_3Views/test_3views'
-    out_path = '/media/qiao/数据文档/SLDataSet/Thing10K/2_DepthWithCorres'
-    folder_name = 'test_corres'
-    model_num = 2
-    frame_num = 100
-    cam_shape = (1024, 1280)
-    pro_shape = (800, 1280)
-    cam_intrinsic = np.array([[1201.35, 0.0, 640.0], [0.0, 1202.75, 512.0], [0.0, 0.0, 1.0]])
-    pro_intrinsic = np.array([[2274.82, 0.0, 640.0], [0.0, 2311.78, 400.0], [0.0, 0.0, 1.0]])
-    trans_vec = np.array([46.3635, -22.109, 113.778]).reshape(3, 1) * 1e-3
-    rot_mat = np.array([[0.998411, 0.0375734, -0.0419995],
-                        [-0.0272844, 0.97441, 0.223118],
-                        [0.049308, -0.221618, 0.973886]])
-    pro_vec = np.matmul(rot_mat.transpose(), np.array([[0.0], [0.0], [1.0]]))
-    pix_per_meter = 1200
+    # main_path = '/media/qiao/Data/SLDataSet/Thing10K/1_3Views/test_3views'
+    in_path = main_path + '1_3Views/%s_3views/' % data_set
+    out_path = main_path + '2_DepthWithCorres/%s_corres/' % data_set
+    # out_path = '/media/qiao/Data/SLDataSet/Thing10K/2_DepthWithCorres'
+    # folder_name = '%s_corres' % data_set
+    model_num = cfg.getint('DataInfo', '%s_model' % data_set)
+    frame_num = cfg.getint('DataInfo', 'frame_num')
+    cam_shape = (cfg.getint('Global', 'cam_height'), cfg.getint('Global', 'cam_width'))
+    pro_shape = (cfg.getint('Global', 'pro_height'), cfg.getint('Global', 'pro_width'))
 
-    # Step 1: Get dataset file_name list
+    calib_name = main_path + 'calib.ini'
+    calib = configparser.ConfigParser()
+    calib.read(calib_name)
+
+    # rotation = [float(x) for x in config.get('Extrinsic', 'rotation').split(',')]
+    # rot_mat = np.array(rotation).reshape(3, 3)
+    # cam_intrinsic = np.array([[1201.35, 0.0, 640.0], [0.0, 1202.75, 512.0], [0.0, 0.0, 1.0]])
+    # pro_intrinsic = np.array([[2274.82, 0.0, 640.0], [0.0, 2311.78, 400.0], [0.0, 0.0, 1.0]])
+    # trans_vec = np.array([46.3635, -22.109, 113.778]).reshape(3, 1) * 1e-3
+    # rot_mat = np.array([[0.998411, 0.0375734, -0.0419995],
+    #                     [-0.0272844, 0.97441, 0.223118],
+    #                     [0.049308, -0.221618, 0.973886]])
+    # pro_vec = np.matmul(rot_mat.transpose(), np.array([[0.0], [0.0], [1.0]]))
+    # pix_per_meter = 1200
+
+    # Step 1: Calculate epipolar information here
+    # M, D
+    paras = dp.process_epi_info(cam_intrinsic=[float(x) for x in calib.get('Intrinsic', 'camera').split(',')],
+                                pro_intrinsic=[float(x) for x in calib.get('Intrinsic', 'projector').split(',')],
+                                rotation=[float(x) for x in calib.get('Extrinsic', 'rotation').split(',')],
+                                transition=[float(x) for x in calib.get('Extrinsic', 'transition').split(',')],
+                                cam_shape=cam_shape,
+                                pro_shape=pro_shape,
+                                scale=1e-3)
+    par_mcp1, par_dcp1, par_mp1c, par_dp1c = paras
+
+    # Step 2: Set dataset file_name list
     depth_cam_names = []
     depth_pro1_names = []
-    depth_pro2_names = []
+    # depth_pro2_names = []
     idx_set = []
     for m_idx in range(1, model_num + 1):
         for f_idx in range(0, frame_num):
-            depth_cam_names.append('%s/%d/depth_cam_%d.bin' % (main_path, m_idx, f_idx))
-            depth_pro1_names.append('%s/%d/depth_pro1_%d.bin' % (main_path, m_idx, f_idx))
-            depth_pro2_names.append('%s/%d/depth_pro2_%d.bin' % (main_path, m_idx, f_idx))
+            depth_cam_names.append('%s/%d/depth_cam_%d.bin' % (in_path, m_idx, f_idx))
+            depth_pro1_names.append('%s/%d/depth_pro1_%d.bin' % (in_path, m_idx, f_idx))
+            # depth_pro2_names.append('%s/%d/depth_pro2_%d.bin' % (main_path, m_idx, f_idx))
             idx_set.append((m_idx, f_idx))
     total_frame_num = len(depth_cam_names)
 
-    # Step 2: Calculate epipolar information here
-    # Calculate Mcp1, Dcp1; Mp1c, Dp1c
-    pro_matrix = np.dot(pro_intrinsic, np.hstack((rot_mat, trans_vec)))
-    cam_matrix = np.dot(cam_intrinsic, np.hstack((rot_mat.transpose(),
-                                                  -np.dot(rot_mat.transpose(), trans_vec))))
-    par_mcp1 = np.zeros((cam_shape[0], cam_shape[1], 3))
-    par_mp1c = np.zeros((pro_shape[0], pro_shape[1], 3))
-    par_dcp1 = pro_matrix[:, 3]
-    par_dp1c = cam_matrix[:, 3]
-    for h in range(0, cam_shape[0]):
-        for w in range(0, cam_shape[1]):
-            tmp_vec_cam = np.array([(w - cam_intrinsic[0, 2]) / cam_intrinsic[0, 0],
-                                    (h - cam_intrinsic[1, 2]) / cam_intrinsic[1, 1],
-                                    1])
-            par_mcp1[h, w, :] = np.dot(pro_matrix[:, :3], tmp_vec_cam)
-    for h in range(0, pro_shape[0]):
-        for w in range(0, pro_shape[1]):
-            tmp_vec_pro = np.array([(w - pro_intrinsic[0, 2]) / pro_intrinsic[0, 0],
-                                    (h - pro_intrinsic[1, 2]) / pro_intrinsic[1, 1],
-                                    1])
-            par_mp1c[h, w, :] = np.dot(cam_matrix[:, :3], tmp_vec_pro)
-    # print(par_mp1c[378, 597, :])
-    # print(par_dp1c)
-
     # Step 3: Process every frame
-    file_path = '%s/%s' % (out_path, folder_name)
-    if not os.path.exists(file_path):
-        os.mkdir(file_path)
+    if not os.path.exists(out_path):
+        os.mkdir(out_path)
     for idx in range(0, total_frame_num):
-        depth_cam = load_bin_file(depth_cam_names[idx], cam_shape)
-        depth_pro1 = load_bin_file(depth_pro1_names[idx], pro_shape)
+        depth_cam = dp.load_bin_file(depth_cam_names[idx], cam_shape)
+        depth_pro1 = dp.load_bin_file(depth_pro1_names[idx], pro_shape)
         # depth_pro2 = load_bin_file(depth_pro2_names[idx], image_shape)
 
         # Set mask
@@ -193,58 +109,60 @@ def main():
 
         if idx_set[idx][0] > 0:
             # Calculate norm mat (-dz/dx, -dz/dy, 1)
-            norm_cam, mask_cam = norm_from_depth(depth_cam, mask_cam, pix_per_meter)
-            norm_pro1, mask_pro1 = norm_from_depth(depth_pro1, mask_pro1, pix_per_meter)
+            norm_cam, mask_cam = dp.norm_from_depth(depth_mat=depth_cam, mask_mat=mask_cam,
+                                                    m_per_pix=calib.getfloat('Extrinsic', 'm_per_pix'))
+            norm_pro1, mask_pro1 = dp.norm_from_depth(depth_mat=depth_pro1, mask_mat=mask_pro1,
+                                                      m_per_pix=calib.getfloat('Extrinsic', 'm_per_pix'))
 
             # Calculate shape mat
-            shade_cam = np.dot(norm_cam, pro_vec)
+            shade_cam = dp.shade_from_norm(norm_mat=norm_cam, mask_mat=mask_cam,
+                                           rotation=[float(x) for x in calib.get('Extrinsic', 'rotation').split(',')])
             mask_cam[shade_cam.reshape(mask_cam.shape) <= 0] = 0
-            shade_cam[mask_cam == 0] = 0.0
-            shade_pro1 = np.dot(norm_pro1, np.array([[0.0], [0.0], [1.0]]))
+            shade_pro1 = dp.shade_from_norm(norm_mat=norm_pro1, mask_mat=mask_pro1,
+                                            rotation=np.eye(3))
             mask_pro1[shade_pro1.reshape(mask_pro1.shape) <= 0] = 0
-            shade_pro1[mask_pro1 == 0] = 0.0
 
         # Calculate xy_pro1_cv
-        xy_pro1_cv = np.zeros((cam_shape[0], cam_shape[1], 2))
-        tmp_mat_cv = par_mcp1[:, :, 2] * depth_cam + par_dcp1[2]
-        xy_pro1_cv[:, :, 0] = par_mcp1[:, :, 0] * depth_cam + par_dcp1[0]
-        xy_pro1_cv[:, :, 0] = xy_pro1_cv[:, :, 0] / tmp_mat_cv
-        xy_pro1_cv[:, :, 1] = par_mcp1[:, :, 1] * depth_cam + par_dcp1[1]
-        xy_pro1_cv[:, :, 1] = xy_pro1_cv[:, :, 1] / tmp_mat_cv
-        xy_pro1_cv[mask_cam == 0] = 0.0
+        xy_pro1_cv = dp.depth2xy(depth_mat=depth_cam, par_m=par_mcp1, par_d=par_dcp1, mask_mat=mask_cam)
+        # xy_pro1_cv = np.zeros((cam_shape[0], cam_shape[1], 2))
+        # tmp_mat_cv = par_mcp1[:, :, 2] * depth_cam + par_dcp1[2]
+        # xy_pro1_cv[:, :, 0] = par_mcp1[:, :, 0] * depth_cam + par_dcp1[0]
+        # xy_pro1_cv[:, :, 0] = xy_pro1_cv[:, :, 0] / tmp_mat_cv
+        # xy_pro1_cv[:, :, 1] = par_mcp1[:, :, 1] * depth_cam + par_dcp1[1]
+        # xy_pro1_cv[:, :, 1] = xy_pro1_cv[:, :, 1] / tmp_mat_cv
+        # xy_pro1_cv[mask_cam == 0] = 0.0
 
         # Calculate xy_cam_p1v
-        xy_cam_p1v = np.zeros((pro_shape[0], pro_shape[1], 2))
-        tmp_mat_p1v = par_mp1c[:, :, 2] * depth_pro1 + par_dp1c[2]
-        xy_cam_p1v[:, :, 0] = par_mp1c[:, :, 0] * depth_pro1 + par_dp1c[0]
-        xy_cam_p1v[:, :, 0] = xy_cam_p1v[:, :, 0] / tmp_mat_p1v
-        xy_cam_p1v[:, :, 1] = par_mp1c[:, :, 1] * depth_pro1 + par_dp1c[1]
-        xy_cam_p1v[:, :, 1] = xy_cam_p1v[:, :, 1] / tmp_mat_p1v
-        xy_cam_p1v[mask_pro1 == 0] = 0.0
+        xy_cam_p1v = dp.depth2xy(depth_mat=depth_pro1, par_m=par_mp1c, par_d=par_dp1c, mask_mat=mask_pro1)
+        # xy_cam_p1v = np.zeros((pro_shape[0], pro_shape[1], 2))
+        # tmp_mat_p1v = par_mp1c[:, :, 2] * depth_pro1 + par_dp1c[2]
+        # xy_cam_p1v[:, :, 0] = par_mp1c[:, :, 0] * depth_pro1 + par_dp1c[0]
+        # xy_cam_p1v[:, :, 0] = xy_cam_p1v[:, :, 0] / tmp_mat_p1v
+        # xy_cam_p1v[:, :, 1] = par_mp1c[:, :, 1] * depth_pro1 + par_dp1c[1]
+        # xy_cam_p1v[:, :, 1] = xy_cam_p1v[:, :, 1] / tmp_mat_p1v
+        # xy_cam_p1v[mask_pro1 == 0] = 0.0
 
         # Save
-        prefix = 'm%02df%03d' % (idx_set[idx][0], idx_set[idx][1])
-        np.save('%s/%s_depth_cam.npy' % (file_path, prefix), depth_cam.astype(np.float32))
-        plt.imsave('%s/%s_mask_cam.png' % (file_path, prefix), mask_cam, cmap='Greys_r')
-        np.save('%s/%s_depth_pro1.npy' % (file_path, prefix), depth_pro1.astype(np.float32))
-        plt.imsave('%s/%s_mask_pro1.png' % (file_path, prefix), mask_pro1, cmap='Greys_r')
-        np.save('%s/%s_xy_pro1_cv.npy' % (file_path, prefix), xy_pro1_cv.astype(np.float32))
-        plt.imsave('%s/%s_xy_pro1_cv.png' % (file_path, prefix),
-                   coord_visualization(xy_pro1_cv, pro_shape), cmap='Greys_r')
-        np.save('%s/%s_xy_cam_p1v.npy' % (file_path, prefix), xy_cam_p1v.astype(np.float32))
-        plt.imsave('%s/%s_xy_cam_p1v.png' % (file_path, prefix),
-                   coord_visualization(xy_cam_p1v, cam_shape), cmap='Greys_r')
+        prefix = 'm%02df%03d_' % (idx_set[idx][0], idx_set[idx][1])
+        full_pre = out_path + prefix
+        np.save(full_pre + 'depth_cam.npy', depth_cam.astype(np.float32))
+        np.save(full_pre + 'depth_pro1.npy', depth_pro1.astype(np.float32))
+        np.save(full_pre + 'xy_pro1_cv.npy', xy_pro1_cv.astype(np.float32))
+        np.save(full_pre + 'xy_cam_p1v.npy', xy_cam_p1v.astype(np.float32))
+
+        plt.imsave(full_pre + 'mask_cam.png', mask_cam, cmap='Greys_r')
+        plt.imsave(full_pre + 'mask_pro1.png', mask_pro1, cmap='Greys_r')
+        plt.imsave(full_pre + 'xy_pro1_cv.png', dp.coord_visualization(xy_pro1_cv, pro_shape), cmap='Greys_r')
+        plt.imsave(full_pre + 'xy_cam_p1v.png', dp.coord_visualization(xy_cam_p1v, cam_shape), cmap='Greys_r')
         if idx_set[idx][0] > 0:
-            plt.imsave('%s/%s_shade_cam.png' % (file_path, prefix), shade_cam.reshape(cam_shape), cmap='Greys_r')
-            plt.imsave('%s/%s_shade_pro1.png' % (file_path, prefix), shade_pro1.reshape(pro_shape), cmap='Greys_r')
-        # np.save('%s/%s_shade_cam.npy' % (file_path, prefix), shade_cam.astype(np.float32))
-        # np.save('%s/%s_shade_pro1.npy' % (file_path, prefix), shade_pro1.astype(np.float32))
-        print('%s/%s writing finished.' % (file_path, prefix))
+            plt.imsave(full_pre + 'shade_cam.png', shade_cam.reshape(cam_shape), cmap='Greys_r')
+            plt.imsave(full_pre + 'shade_pro1.png', shade_pro1.reshape(pro_shape), cmap='Greys_r')
+        print(full_pre + ' writing finished.')
 
     return
 
 
 if __name__ == '__main__':
-    assert len(sys.argv) >= 1
+    assert len(sys.argv) >= 3
 
-    main()
+    main(main_path=sys.argv[1], data_set=sys.argv[2])

@@ -18,11 +18,9 @@ import os
 # PyTorch & NumPy
 from torch.utils.data import DataLoader
 import torch
-import numpy as np
 from tensorboardX import SummaryWriter
 
 # My package
-import Module.visual_module as vm
 from Module.depth_net import DepthNet
 from Module.data_set_loader import FlowDataSet, SampleSet
 from Module.util import check_nan, AverageMeter, depth2rgb, flow2rgb
@@ -129,7 +127,7 @@ def test(test_loader, model, loss_fun, epoch, image_writers):
         :param model:       The Network used for Training.
         :param loss_fun:    The loss function for loss calculation.
         :param epoch:       Epoch number used for visualization.
-        :param image_writer: The Tensorboardx SummarayWritter. Output image.
+        :param image_writers: The Tensorboardx SummarayWritter. Output image.
 
     Return:
         :return: test loss result. Average.
@@ -174,7 +172,7 @@ def test(test_loader, model, loss_fun, epoch, image_writers):
     return losses.avg
 
 
-def main():
+def main(main_path):
     """
     Main function for training.
     :return:
@@ -183,13 +181,16 @@ def main():
     # Step 0: Set data_loader, visual
     # --------------------------------------------
     print('Step 0: DataSet initializing...', end='', flush=True)
+    if not os.path.exists(os.path.join(main_path, config.get('FilePath', 'save_path'))):
+        os.mkdir(os.path.join(main_path, config.get('FilePath', 'save_path')))
     train_loader = create_dataloader(flag='train', cfg=config)
     test_loader = create_dataloader(flag='test', cfg=config)
-    train_writer = SummaryWriter(config.get('FilePath', 'save_path') + 'train')
-    test_writer = SummaryWriter(config.get('FilePath', 'save_path') + 'test')
+    train_writer = SummaryWriter(os.path.join(main_path, config.get('FilePath', 'save_path'), 'train'))
+    test_writer = SummaryWriter(os.path.join(main_path, config.get('FilePath', 'save_path'), 'test'))
     image_writers = []
     for i in range(config.getint('Paras', 'writer_num')):
-        image_writers.append(SummaryWriter(config.get('FilePath', 'save_path') + 'test' + str(i)))
+        image_writers.append(
+            SummaryWriter(os.path.join(main_path, config.get('FilePath', 'save_path'), 'test%d' % i)))
     print('Finished.')
     print('  --cuda status:', cuda)
     print('  --train data load: %d' % len(train_loader))
@@ -201,14 +202,15 @@ def main():
     print('Step 1: Network Creating...', end='', flush=True)
     depth_net = DepthNet()
     flag_set = [False]
-    if os.path.exists(config.get('FilePath', 'predictor_name') + '.pt'):
+    tmp_path = os.path.join(main_path, config.get('FilePath', 'predictor_name') + '.pt')
+    if os.path.exists(tmp_path):
         flag_set[0] = True
-        depth_net.load_state_dict(torch.load(config.get('FilePath', 'predictor_name') + '.pt'), strict=False)
+        depth_net.load_state_dict(torch.load(tmp_path), strict=False)
         depth_net.train()
         check_nan(depth_net)
     depth_net = depth_net.cuda() if cuda else depth_net
     print('Finished.')
-    print('  --Model path: ', config.get('FilePath', 'predictor_name') + '.pt')
+    print('  --Model path: ', tmp_path)
     print('  --Load predictor model: ', flag_set[0])
 
     # Step 2: Create loss function, optimizer
@@ -241,25 +243,23 @@ def main():
 
         # Save
         torch.save(depth_net.state_dict(),
-                   ''.join([config.get('FilePath', 'save_path'),
-                            config.get('FilePath', 'predictor_name'),
-                            '.pt']))
+                   os.path.join(main_path, config.get('FilePath', 'save_path'),
+                                '%s.pt' % config.get('FilePath', 'predictor_name')))
 
         # Save for history model
         if (epoch + 1) % config.getint('Paras', 'save_period') == 0:
             torch.save(depth_net.state_dict(),
-                       ''.join([config.get('FilePath', 'save_path'),
-                                config.get('FilePath', 'predictor_name'),
-                                str(epoch),
-                                '.pt']))
+                       os.path.join(main_path,
+                                    config.get('FilePath', 'save_path'),
+                                    '%s%d.pt' % (config.get('FilePath', 'predictor_name'), epoch)))
     print('All program finished.')
 
 
 if __name__ == '__main__':
     assert len(sys.argv) >= 2
-    config_path = sys.argv[1]
+    config_path = os.path.join(sys.argv[1], '000config.ini')
 
     config = configparser.ConfigParser(interpolation=configparser.ExtendedInterpolation())
     config.read(config_path)
 
-    main()
+    main(main_path=sys.argv[1])

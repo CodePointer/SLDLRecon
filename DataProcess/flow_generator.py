@@ -49,124 +49,50 @@ Main work:
         img_cam.png
 """
 
-import csv
+import configparser
 import sys
 import os
 import torch
-from matplotlib import pyplot as plt
 import numpy as np
-import scipy.stats as st
+import DataProcess.util as dp
 
 
-def gkern(kernlen=21, nsig=3.0):
-    """Returns a 2D Gaussian kernel array."""
-    interval = (2*nsig+1.0) / kernlen
-    x = np.linspace(-nsig-interval/2.0, nsig+interval/2.0, kernlen+1)
-    kern1d = np.diff(st.norm.cdf(x))
-    kernel_raw = np.sqrt(np.outer(kern1d, kern1d))
-    kernel = kernel_raw / kernel_raw.sum()
-    return kernel
+def main(main_path, data_set):
 
-
-def load_as_torch(name, suffix, main_path, prefix, dtype=np.float32):
-    """Load file as torch tensor.
-
-    Possible data:
-        depth_cam.npy   [H, W], float
-        mask_cam.png    [H, W], byte
-        xy_pro1_cv.npy  [H, W, 2], float
-        xy_cam_p1v.npy  [H, W, 2], float
-        mask_pro.png    [H, W], byte
-
-    Args:
-        :param name: the data name.
-        :param suffix: '.png' or '.npy'.
-        :param main_path: the file path with all the m00f000 data.
-        :param prefix: m00f000.
-
-    Return:
-        :return: Loaded data or None(if suffix is not available).
-                Data is always 4D [N, C, H, W].
-
-    Raises:
-        None.
-    """
-    full_name = '%s/%s_%s%s' % (main_path, prefix, name, suffix)
-    if suffix == '.png':
-        item = torch.from_numpy(plt.imread(full_name).astype(dtype))
-        if len(item.shape) == 3:
-            item = item[:, :, 0].unsqueeze(0)
-        else:
-            item = item.unsqueeze(0)
-        item = item.unsqueeze(0)
-        return item.cuda()
-    elif suffix == '.npy':
-        item = torch.from_numpy(np.load(full_name).astype(dtype))
-        if len(item.shape) == 2:
-            item = item.unsqueeze(0)
-        else:
-            item = item.permute(2, 0, 1)
-        item[torch.isnan(item)] = 0
-        item = item.unsqueeze(0)
-        return item.cuda()
-    else:
-        return None
-
-
-def save_from_torch(mat, name, suffix, out_path, prefix):
-    """Save file from torch tensor to npy or png file.
-
-    detach, cpu, numpy. use plt.imsave and np.save function.
-
-    :param name:
-    :param suffix:
-    :param out_path:
-    :param prefix:
-    :return:
-    """
-    full_name = '%s/%s_%s%s' % (out_path, prefix, name, suffix)
-    if suffix == '.png':
-        mat_np = mat.detach().cpu().squeeze().numpy()
-        plt.imsave(full_name, mat_np, cmap='Greys_r')
-    elif suffix == '.npy':
-        mat = mat.detach().cpu().squeeze()
-        if len(mat.shape) == 3:
-            mat = mat.permute(1, 2, 0)
-        mat_np = mat.numpy().astype(np.float32)
-        np.save(full_name, mat_np)
-
-
-def main():
+    # Load config
+    main_path = main_path if main_path[-1] == '/' else main_path + '/'
+    cfg = configparser.ConfigParser(interpolation=configparser.ExtendedInterpolation())
+    cfg.read(main_path + '000config.ini')
 
     # Some parameters (You should edit here every time):
-    main_path = '/media/qiao/数据文档/SLDataSet/Thing10K/2_DepthWithCorres/train_corres'
-    out_path = '/media/qiao/数据文档/SLDataSet/Thing10K/3_PatternedImage/train_dataset'
-    pattern_path = '/media/qiao/数据文档/SLDataSet/Thing10K/3_PatternedImage'
-    model_num = 50
-    frame_num = 100
-    jump = 1
-    cam_shape = (1024, 1280)
-    pro_shape = (800, 1280)
-    flow_thred = 8.0
-    pattern_pix_size = 4
+    in_path = main_path + '2_DepthWithCorres/%s_corres/' % data_set
+    out_path = main_path + '3_PatternedImage/%s_dataset/' % data_set
+    model_num = cfg.getint('DataInfo', '%s_model' % data_set)
+    frame_num = cfg.getint('DataInfo', 'frame_num')
+    cam_shape = (cfg.getint('Global', 'cam_height'), cfg.getint('Global', 'cam_width'))
+    pro_shape = (cfg.getint('Global', 'pro_height'), cfg.getint('Global', 'pro_width'))
+    jump = cfg.getint('DataInfo', 'jump')
+    flow_thred = cfg.getfloat('DataInfo', 'flow_thred')
+    pattern_pix_size = cfg.getint('DataInfo', 'pat_size')
     # Noise parameters
-    p_noise_rad = 0.1
-    i_noise_rad = 0.2
-    gker_rad = 4
-    kernlen = gker_rad * 2 + 1
-    gkernel = torch.from_numpy(gkern(kernlen=kernlen, nsig=4.0)).reshape(1, 1, kernlen, kernlen)
-    gkernel = gkernel.float().cuda()
+    render_paras = dict(i_gn_rad=cfg.getfloat('Render', 'i_gn_rad'),
+                        p_gn_rad=cfg.getfloat('Render', 'p_gn_rad'),
+                        i_gb_rad=cfg.getint('Render', 'i_gb_rad'),
+                        i_gb_sig=cfg.getfloat('Render', 'i_gb_sig'),
+                        p_gb_rad=cfg.getint('Render', 'p_gb_rad'),
+                        p_gb_sig=cfg.getfloat('Render', 'p_gb_sig'))
 
     # Main Loop
     if not os.path.exists(out_path):
         os.mkdir(out_path)
+
     x_cam_grid = torch.arange(0, cam_shape[1]).reshape(1, -1).repeat(cam_shape[0], 1)
     y_cam_grid = torch.arange(0, cam_shape[0]).reshape(-1, 1).repeat(1, cam_shape[1])
     xy_cam_grid = torch.stack((x_cam_grid, y_cam_grid), dim=0).reshape(1, 2, cam_shape[0], cam_shape[1]).float()
     xy_cam_grid = xy_cam_grid.cuda()
-    pattern = load_as_torch('pattern0', '.png', pattern_path, '%dpix' % pattern_pix_size, dtype=np.float32)
-    # pattern = pattern / 255.0
-    for m_idx in range(20, model_num + 1):
+
+    pattern = dp.load_as_torch(full_name=main_path + '4pix_pattern.png')
+    for m_idx in range(1, model_num + 1):
         # Step 1: Load all information needed.
         print("Loading No.%02d model..." % m_idx, end='', flush=True)
         depth_cam = []
@@ -176,19 +102,18 @@ def main():
         mask_pro1 = []
         shade_cam = []
         for f_idx in range(0, frame_num):
-            prefix = 'm%02df%03d' % (m_idx, f_idx)
-            depth_cam.append(load_as_torch('depth_cam', '.npy', main_path, prefix, dtype=np.float32))
-            mask_cam.append(load_as_torch('mask_cam', '.png', main_path, prefix, dtype=np.uint8))
-            xy_pro1_cv.append(load_as_torch('xy_pro1_cv', '.npy', main_path, prefix, dtype=np.float32))
-            xy_cam_p1v.append(load_as_torch('xy_cam_p1v', '.npy', main_path, prefix, dtype=np.float32))
-            mask_pro1.append(load_as_torch('mask_pro1', '.png', main_path, prefix, dtype=np.uint8))
-            shade_cam.append(load_as_torch('shade_cam', '.png', main_path, prefix, dtype=np.float32))
+            full_pre = in_path + 'm%02df%03d_' % (m_idx, f_idx)
+            depth_cam.append(dp.load_as_torch(full_pre + 'depth_cam.npy'))
+            mask_cam.append(dp.load_as_torch(full_pre + 'mask_cam.png', dtype=np.uint8))
+            xy_pro1_cv.append(dp.load_as_torch(full_pre + 'xy_pro1_cv.npy'))
+            xy_cam_p1v.append(dp.load_as_torch(full_pre + 'xy_cam_p1v.npy'))
+            mask_pro1.append(dp.load_as_torch(full_pre + 'mask_pro1.png', dtype=np.uint8))
+            shade_cam.append(dp.load_as_torch(full_pre + 'shade_cam.png'))
         print("Finished.")
 
         # Step 2: Process every frame, calculate flow.
         img_cam_list = []
         for f_idx in range(0, frame_num):
-            prefix = 'm%02df%03d' % (m_idx, f_idx)
             i = f_idx
             j = i + jump
             if j >= frame_num:
@@ -207,22 +132,13 @@ def main():
             xy_cam_cv[mask_flow.repeat(1, 2, 1, 1) == 0] = 0
 
             # Sample img_cam from xy_cam_p1v
-            # pattern noise here
-            noise_shape = tuple(int(i / pattern_pix_size) for i in pro_shape)
-            pattern_noise = torch.randn(pattern.shape[:2] + noise_shape).cuda() * p_noise_rad
-            pattern_noise_up = torch.nn.functional.interpolate(input=pattern_noise, scale_factor=pattern_pix_size,
-                                                               mode='nearest')
-            pattern_add = pattern + pattern_noise_up
-            img_cam = torch.nn.functional.grid_sample(input=pattern_add, grid=xy_pro1_cv[i].float())
-            # shade_noise here
-            shade_img = img_cam * shade_cam[i]
-            # shade_img = img_cam
-            # image_noise here
-            img_noise = torch.randn(cam_shape).cuda() * i_noise_rad
-            img_cam = shade_img + img_noise
-            img_cam = torch.nn.functional.conv2d(img_cam, gkernel, padding=gker_rad)
+            img_cam = dp.render_image(pattern=pattern,
+                                      xy_pro=xy_pro1_cv[i].float(),
+                                      shade_mat=shade_cam[i],
+                                      pattern_size=pattern_pix_size,
+                                      paras=render_paras)
             img_cam[mask_cam[i] == 0] = 0
-            img_cam = torch.clamp(img_cam, min=0, max=1)
+            img_cam_list.append(img_cam)
 
             # Calculate flow mat and check valid
             flow_j = xy_cam_cv - xy_cam_grid
@@ -231,27 +147,28 @@ def main():
             flow_j[mask_flow.repeat(1, 2, 1, 1) == 0] = 0
 
             # Save (as i frame)
-            save_from_torch(depth_cam[i].float(), 'depth_cam', '.npy', out_path, prefix)
-            save_from_torch(mask_cam[i], 'mask_cam', '.png', out_path, prefix)
-            save_from_torch(flow_j.float(), 'flow1_cv', '.npy', out_path, prefix)
-            save_from_torch(mask_flow.float(), 'mask_flow1', '.png', out_path, prefix)
-            save_from_torch(img_cam, 'img_cam_1', '.png', out_path, prefix)
-            img_cam_list.append(img_cam)
+            full_pre = out_path + 'm%02df%03d_' % (m_idx, f_idx)
+            dp.save_from_torch(full_name=full_pre + 'depth_cam.npy', mat=depth_cam[i].float())
+            dp.save_from_torch(full_name=full_pre + 'mask_cam.png', mat=mask_cam[i])
+            dp.save_from_torch(full_name=full_pre + 'flow1_cv.npy', mat=flow_j.float())
+            dp.save_from_torch(full_name=full_pre + 'mask_flow1.png', mat=mask_flow.float())
+            # dp.save_from_torch(full_name=full_pre + 'img_cam_1.png', mat=img_cam)
 
             if i % 5 == 4:
                 print('.', end='', flush=True)
-        print('')
 
         # Save img_cam_2
         for f_idx in range(0, frame_num):
-            prefix = 'm%02df%03d' % (m_idx, f_idx)
             i = f_idx
             j = i + jump
             j = j if j < frame_num else j - frame_num
-            save_from_torch(img_cam_list[j], 'img_cam_2', '.png', out_path, prefix)
+            full_pre = out_path + 'm%02df%03d_' % (m_idx, f_idx)
+            dp.save_from_torch(full_name=full_pre + 'img_cam_1.png', mat=img_cam_list[i])
+            dp.save_from_torch(full_name=full_pre + 'img_cam_2.png', mat=img_cam_list[j])
+        print('Finished.')
 
 
 if __name__ == '__main__':
-    assert len(sys.argv) >= 1
+    assert len(sys.argv) >= 3
 
-    main()
+    main(main_path=sys.argv[1], data_set=sys.argv[2])
